@@ -102,6 +102,8 @@ static const char SETUP_PAGE[] PROGMEM = R"rawliteral(
 
 bool relay1On = false;
 bool relay2On = false;
+String relay1Name = "Relay 1";
+String relay2Name = "Relay 2";
 uint32_t lastPollAt = 0;
 uint32_t lastWiFiAttemptAt = 0;
 uint32_t lastWiFiStatusLogAt = 0;
@@ -478,14 +480,32 @@ static void pollCloud() {
     return;
   }
 
+  JsonVariantConst relayNames = response["relays"];
+  JsonVariantConst cloudRelay1Name = relayNames["relay1"]["name"];
+  JsonVariantConst cloudRelay2Name = relayNames["relay2"]["name"];
+  if (cloudRelay1Name.is<const char *>()) {
+    const String name = cloudRelay1Name.as<String>();
+    if (!name.isEmpty() && name.length() <= 96) {
+      relay1Name = name;
+    }
+  }
+  if (cloudRelay2Name.is<const char *>()) {
+    const String name = cloudRelay2Name.as<String>();
+    if (!name.isEmpty() && name.length() <= 96) {
+      relay2Name = name;
+    }
+  }
+
   recordCloudStatus(true);
   const bool requestedRelay1 = relay1.as<bool>();
   const bool requestedRelay2 = relay2.as<bool>();
-  Serial.printf("Cloud command received: Relay 1=%s, Relay 2=%s\n",
+  Serial.printf("Cloud command received: %s=%s, %s=%s\n",
+                relay1Name.c_str(),
                 requestedRelay1 ? "ON" : "OFF",
+                relay2Name.c_str(),
                 requestedRelay2 ? "ON" : "OFF");
-  setRelay(RELAY1_PIN, relay1On, requestedRelay1, "Relay 1");
-  setRelay(RELAY2_PIN, relay2On, requestedRelay2, "Relay 2");
+  setRelay(RELAY1_PIN, relay1On, requestedRelay1, relay1Name.c_str());
+  setRelay(RELAY2_PIN, relay2On, requestedRelay2, relay2Name.c_str());
 }
 
 static void uploadDeviceLogs() {

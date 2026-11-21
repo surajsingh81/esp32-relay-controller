@@ -78,11 +78,15 @@ For active-LOW modules, change `RELAY_ACTIVE_LOW` to `true` in `src/main.cpp`.
 Open the published GitHub Pages URL and enter the Worker `CONTROL_PASSWORD`.
 Each relay has its own mode:
 
+- **Device name:** choose **Edit device name** on either relay card to label it
+  for the connected device (for example, Pump or Fan). Names are saved in
+  Cloudflare and also appear in firmware relay-change logs.
 - **Manual:** use its ON/OFF buttons.
-- **Auto:** enter a daily start time and ON duration, then save. Schedules use
-  Asia/Kolkata time and repeat daily. If the ESP32 is disconnected across the
-  start and misses polling for more than 15 seconds, that day's run is skipped
-  rather than started late. A schedule is not active until it has been saved.
+- **Auto:** add up to 20 daily start times and ON durations, then save all
+  timings. Each timing repeats daily in Asia/Kolkata time; the relay stays ON
+  while any saved timing is active. If the ESP32 is disconnected across a
+  timing's start and misses polling for more than 15 seconds, that day's run is
+  skipped rather than started late. Timings are not active until saved.
 
 The Worker stores mode, schedule, and requested states in D1. The webpage
 shows the requested output state, not electrical feedback from the relay.
@@ -95,18 +99,19 @@ check-in. It shows **Online** when the device has polled the Worker within
 service has not heard from the device; it cannot tell whether the cause is
 Wi-Fi, the home internet connection, or the device being powered off.
 
-The signed-in **ESP32 Monitor** shows timestamped Wi-Fi, cloud-service, and
-relay-change events. It refreshes every five seconds and Cloudflare retains
-the latest 500 entries. The firmware queues a small number of events while
-offline and uploads them after connectivity returns. Wi-Fi passwords and
-network names are not included in monitor events; events cannot reach the
-website while the device has no internet connection.
+Use **Help & info** to view the Wi-Fi setup steps, schedule details, and the
+signed-in **ESP32 Monitor**. The monitor shows timestamped Wi-Fi,
+cloud-service, and relay-change events. It refreshes every five seconds and
+Cloudflare retains the latest 500 entries. The firmware queues a small number
+of events while offline and uploads them after connectivity returns. Wi-Fi
+passwords and network names are not included in monitor events; events cannot
+reach the website while the device has no internet connection.
 
 ## 5. Deploying schedule changes
 
-The scheduling and monitor features add D1 tables without clearing existing
-relay states. Before deploying an updated Worker, apply the schema (it is safe
-to rerun):
+The scheduling, monitor, and device-name features add D1 tables without
+clearing existing relay states. Before deploying an updated Worker, apply the
+schema (it is safe to rerun):
 
 ```sh
 cd cloudflare

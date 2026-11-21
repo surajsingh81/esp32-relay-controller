@@ -3,6 +3,7 @@ const DEVICE_ONLINE_WINDOW_MS = 15000;
 const MAX_LOG_BATCH_SIZE = 20;
 const MAX_LOG_MESSAGE_LENGTH = 240;
 const DEVICE_LOG_RETENTION = 500;
+const MAX_RELAY_SCHEDULES = 20;
 
 function jsonResponse(data, status, corsHeaders) {
   return new Response(JSON.stringify(data), {
@@ -130,14 +131,17 @@ async function readRelaySettings(database) {
   const { results } = await database
     .prepare(
       `SELECT state.relay_id, state.is_on, settings.mode, settings.start_time,
-              settings.duration_minutes, settings.schedule_enabled
+              settings.duration_minutes, settings.schedule_enabled,
+              metadata.name
        FROM relay_state AS state
        LEFT JOIN relay_settings AS settings ON settings.relay_id = state.relay_id
+       LEFT JOIN relay_metadata AS metadata ON metadata.relay_id = state.relay_id
        ORDER BY state.relay_id`,
     )
     .all();
   return results.map((row) => ({
     id: row.relay_id,
+    name: row.name ?? `Relay ${row.relay_id}`,
     mode: row.mode ?? "manual",
     manualOn: row.is_on === 1,
     startTime: row.start_time ?? "08:00",
@@ -146,35 +150,86 @@ async function readRelaySettings(database) {
   }));
 }
 
-async function readSkippedSchedules(database) {
+async function readRelaySchedules(database) {
   const { results } = await database
-    .prepare("SELECT relay_id, occurrence_start FROM skipped_schedule")
+    .prepare(
+      `SELECT id, relay_id, start_time, duration_minutes
+       FROM relay_schedules
+       ORDER BY relay_id, start_time`,
+    )
     .all();
-  return new Map(results.map((row) => [row.relay_id, row.occurrence_start]));
+  const schedulesByRelay = new Map();
+  for (const row of results) {
+    const schedules = schedulesByRelay.get(row.relay_id) ?? [];
+    schedules.push({
+      id: row.id,
+      startTime: row.start_time,
+      durationMinutes: row.duration_minutes,
+    });
+    schedulesByRelay.set(row.relay_id, schedules);
+  }
+  return schedulesByRelay;
 }
 
-function makeRelayState(relays, skippedSchedules, timeZone, nowMs) {
+async function readSkippedSchedules(database) {
+  const { results } = await database
+    .prepare(
+      `SELECT relay_id, schedule_id, occurrence_start
+       FROM skipped_schedule_occurrences`,
+    )
+    .all();
+  return new Set(results.map((row) =>
+    `${row.relay_id}:${row.schedule_id}:${row.occurrence_start}`));
+}
+
+function makeRelayState(relays, schedulesByRelay, skippedSchedules, timeZone, nowMs) {
   const localClock = getLocalClock(nowMs, timeZone);
   const state = { timezone: timeZone, relays: {} };
 
   for (const relay of relays) {
-    const window = getScheduledWindow(relay, localClock);
-    const scheduleSkipped = skippedSchedules.get(relay.id) === window.occurrenceStart;
+    const schedules = schedulesByRelay.get(relay.id) ?? [];
+    const isScheduledOn = schedules.some((schedule) => {
+      const window = getScheduledWindow(schedule, localClock);
+      const occurrenceKey =
+        `${relay.id}:${schedule.id}:${window.occurrenceStart}`;
+      return window.active && !skippedSchedules.has(occurrenceKey);
+    });
     const isOn = relay.mode === "auto"
-      ? relay.scheduleEnabled && window.active && !scheduleSkipped
+      ? isScheduledOn
       : relay.manualOn;
 
     state[`relay${relay.id}`] = isOn;
     state.relays[`relay${relay.id}`] = {
+      name: relay.name,
       mode: relay.mode,
       manualOn: relay.manualOn,
-      startTime: relay.startTime,
-      durationMinutes: relay.durationMinutes,
-      scheduleEnabled: relay.scheduleEnabled,
+      schedules: schedules.map(({ startTime, durationMinutes }) => ({
+        startTime,
+        durationMinutes,
+      })),
+      startTime: schedules[0]?.startTime ?? relay.startTime,
+      durationMinutes: schedules[0]?.durationMinutes ?? relay.durationMinutes,
+      scheduleEnabled: schedules.length > 0,
       isOn,
     };
   }
   return state;
+}
+
+async function saveRelaySchedules(database, relayId, schedules) {
+  await database.batch([
+    database.prepare("DELETE FROM relay_schedules WHERE relay_id = ?").bind(relayId),
+    ...schedules.map((schedule) =>
+      database.prepare(
+        `INSERT INTO relay_schedules (relay_id, start_time, duration_minutes)
+         VALUES (?, ?, ?)`,
+      ).bind(relayId, schedule.startTime, schedule.durationMinutes)),
+    database.prepare(
+      `UPDATE relay_settings
+       SET start_time = ?, duration_minutes = ?, schedule_enabled = 1, mode = 'auto'
+       WHERE relay_id = ?`,
+    ).bind(schedules[0].startTime, schedules[0].durationMinutes, relayId),
+  ]);
 }
 
 function getDeviceStatus(lastPollMs, nowMs) {
@@ -187,43 +242,57 @@ function getDeviceStatus(lastPollMs, nowMs) {
 }
 
 async function readStates(database, timeZone, nowMs = Date.now()) {
-  const [relays, skippedSchedules, pollState] = await Promise.all([
+  const [relays, schedulesByRelay, skippedSchedules, pollState] = await Promise.all([
     readRelaySettings(database),
+    readRelaySchedules(database),
     readSkippedSchedules(database),
     database.prepare("SELECT last_poll_ms FROM device_poll_state WHERE id = 1").first(),
   ]);
-  const state = makeRelayState(relays, skippedSchedules, timeZone, nowMs);
+  const state = makeRelayState(
+    relays,
+    schedulesByRelay,
+    skippedSchedules,
+    timeZone,
+    nowMs,
+  );
   state.device = getDeviceStatus(Number(pollState?.last_poll_ms ?? 0), nowMs);
   return state;
 }
 
 async function readDeviceState(database, timeZone) {
   const nowMs = Date.now();
-  const lastPoll = await database
-    .prepare("SELECT last_poll_ms FROM device_poll_state WHERE id = 1")
-    .first();
+  const [lastPoll, relays, schedulesByRelay, skippedSchedules] =
+    await Promise.all([
+      database.prepare("SELECT last_poll_ms FROM device_poll_state WHERE id = 1").first(),
+      readRelaySettings(database),
+      readRelaySchedules(database),
+      readSkippedSchedules(database),
+    ]);
   const lastPollMs = lastPoll?.last_poll_ms ?? 0;
-  const relays = await readRelaySettings(database);
-  const skippedSchedules = await readSkippedSchedules(database);
   const localClock = getLocalClock(nowMs, timeZone);
   const lastPollClock = lastPollMs
     ? getLocalClock(lastPollMs, timeZone)
     : null;
 
   for (const relay of relays) {
-    if (relay.mode !== "auto" || !relay.scheduleEnabled) continue;
+    if (relay.mode !== "auto") continue;
 
-    const window = getScheduledWindow(relay, localClock);
-    const pollWasInterrupted = !lastPollMs ||
-      nowMs - lastPollMs > DEVICE_ONLINE_WINDOW_MS;
-    const missedStart = lastPollClock === null ||
-      lastPollClock.absoluteSeconds < window.occurrenceStart;
-    if (window.active && pollWasInterrupted && missedStart) {
-      await database.prepare(
-        `INSERT INTO skipped_schedule (relay_id, occurrence_start) VALUES (?, ?)
-         ON CONFLICT(relay_id) DO UPDATE SET occurrence_start = excluded.occurrence_start`,
-      ).bind(relay.id, window.occurrenceStart).run();
-      skippedSchedules.set(relay.id, window.occurrenceStart);
+    for (const schedule of schedulesByRelay.get(relay.id) ?? []) {
+      const window = getScheduledWindow(schedule, localClock);
+      const occurrenceKey =
+        `${relay.id}:${schedule.id}:${window.occurrenceStart}`;
+      const pollWasInterrupted = !lastPollMs ||
+        nowMs - lastPollMs > DEVICE_ONLINE_WINDOW_MS;
+      const missedStart = lastPollClock === null ||
+        lastPollClock.absoluteSeconds < window.occurrenceStart;
+      if (window.active && pollWasInterrupted && missedStart &&
+          !skippedSchedules.has(occurrenceKey)) {
+        await database.prepare(
+          `INSERT OR IGNORE INTO skipped_schedule_occurrences
+           (relay_id, schedule_id, occurrence_start) VALUES (?, ?, ?)`,
+        ).bind(relay.id, schedule.id, window.occurrenceStart).run();
+        skippedSchedules.add(occurrenceKey);
+      }
     }
   }
 
@@ -231,7 +300,13 @@ async function readDeviceState(database, timeZone) {
     "UPDATE device_poll_state SET last_poll_ms = ? WHERE id = 1",
   ).bind(nowMs).run();
 
-  return makeRelayState(relays, skippedSchedules, timeZone, nowMs);
+  return makeRelayState(
+    relays,
+    schedulesByRelay,
+    skippedSchedules,
+    timeZone,
+    nowMs,
+  );
 }
 
 export default {
@@ -369,6 +444,21 @@ export default {
         return jsonResponse(await readStates(env.DB, env.TIME_ZONE), 200, corsHeaders);
       }
 
+      const nameRoute = /^\/api\/relay\/([12])\/name$/.exec(url.pathname);
+      if (nameRoute && request.method === "POST") {
+        const body = await request.json();
+        const name = typeof body?.name === "string" ? body.name.trim() : "";
+        if (!name || name.length > 24 || /[\u0000-\u001f\u007f]/.test(name)) {
+          return jsonResponse({
+            error: "Device name must be 1–24 characters and contain no control characters",
+          }, 400, corsHeaders);
+        }
+        await env.DB.prepare(
+          "UPDATE relay_metadata SET name = ? WHERE relay_id = ?",
+        ).bind(name, Number(nameRoute[1])).run();
+        return jsonResponse(await readStates(env.DB, env.TIME_ZONE), 200, corsHeaders);
+      }
+
       const scheduleRoute = /^\/api\/relay\/([12])\/schedule$/.exec(url.pathname);
       if (scheduleRoute && request.method === "POST") {
         const body = await request.json();
@@ -381,11 +471,35 @@ export default {
             error: "Use a 24-hour start time and a duration from 1 to 1439 minutes",
           }, 400, corsHeaders);
         }
-        await env.DB.prepare(
-          `UPDATE relay_settings
-           SET start_time = ?, duration_minutes = ?, schedule_enabled = 1, mode = 'auto'
-           WHERE relay_id = ?`,
-        ).bind(body.startTime, body.durationMinutes, Number(scheduleRoute[1])).run();
+        await saveRelaySchedules(env.DB, Number(scheduleRoute[1]), [{
+          startTime: body.startTime,
+          durationMinutes: body.durationMinutes,
+        }]);
+        return jsonResponse(await readStates(env.DB, env.TIME_ZONE), 200, corsHeaders);
+      }
+
+      const schedulesRoute = /^\/api\/relay\/([12])\/schedules$/.exec(url.pathname);
+      if (schedulesRoute && request.method === "POST") {
+        const body = await request.json();
+        const schedules = body?.schedules;
+        if (!Array.isArray(schedules) || schedules.length < 1 ||
+            schedules.length > MAX_RELAY_SCHEDULES ||
+            !schedules.every((schedule) =>
+              schedule && typeof schedule === "object" &&
+              typeof schedule.startTime === "string" &&
+              /^(?:[01]\d|2[0-3]):[0-5]\d$/.test(schedule.startTime) &&
+              Number.isInteger(schedule.durationMinutes) &&
+              schedule.durationMinutes >= 1 && schedule.durationMinutes <= 1439)) {
+          return jsonResponse({
+            error: `Provide 1–${MAX_RELAY_SCHEDULES} timings with a valid start time and 1–1439 minute duration`,
+          }, 400, corsHeaders);
+        }
+        if (new Set(schedules.map((schedule) => schedule.startTime)).size !==
+            schedules.length) {
+          return jsonResponse({ error: "Each daily timing must have a different start time" },
+            400, corsHeaders);
+        }
+        await saveRelaySchedules(env.DB, Number(schedulesRoute[1]), schedules);
         return jsonResponse(await readStates(env.DB, env.TIME_ZONE), 200, corsHeaders);
       }
 
