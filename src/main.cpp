@@ -6,9 +6,9 @@
 #include <WebServer.h>
 #include <WiFi.h>
 #include <WiFiClientSecure.h>
-#include <esp_system.h>
 
 #include "secrets.h"
+#include "setup_secrets.h"
 
 // Configuration
 constexpr uint8_t RELAY1_PIN = 4;
@@ -18,8 +18,8 @@ constexpr uint32_t POLL_INTERVAL_MS = 3000;
 constexpr uint32_t WIFI_RETRY_INTERVAL_MS = 30000;
 constexpr uint32_t WIFI_STATUS_LOG_INTERVAL_MS = 5000;
 constexpr char WIFI_SETTINGS_NAMESPACE[] = "relay-wifi";
-constexpr char SETUP_AP_PASSWORD_ALPHABET[] =
-    "ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz23456789";
+static_assert(sizeof(SETUP_AP_PASSWORD) >= 9 && sizeof(SETUP_AP_PASSWORD) <= 64,
+              "Setup hotspot password must be between 8 and 63 characters.");
 
 static const char SETUP_PAGE[] PROGMEM = R"rawliteral(
 <!doctype html>
@@ -287,12 +287,7 @@ static void startSetupPortal() {
     }
   }
   setupApName = "ESP32-Relay-Setup-" + suffix.substring(suffix.length() - 6);
-
-  const size_t alphabetLength = sizeof(SETUP_AP_PASSWORD_ALPHABET) - 1;
-  setupApPassword.reserve(12);
-  for (uint8_t index = 0; index < 12; ++index) {
-    setupApPassword += SETUP_AP_PASSWORD_ALPHABET[esp_random() % alphabetLength];
-  }
+  setupApPassword = SETUP_AP_PASSWORD;
 
   WiFi.mode(WIFI_AP_STA);
   if (!WiFi.softAP(setupApName.c_str(), setupApPassword.c_str(), 1, false, 4)) {
@@ -301,7 +296,7 @@ static void startSetupPortal() {
     const IPAddress setupIp = WiFi.softAPIP();
     captiveDns.start(53, "*", setupIp);
     Serial.printf("Wi-Fi setup hotspot: %s\n", setupApName.c_str());
-    Serial.printf("Setup hotspot password: %s\n", setupApPassword.c_str());
+    Serial.println("Setup hotspot password is set in the local setup_secrets.h file.");
     Serial.printf("Connect to the hotspot and open http://%s/\n",
                   setupIp.toString().c_str());
   }

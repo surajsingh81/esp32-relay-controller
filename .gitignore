@@ -1,5 +1,6 @@
 .pio/
 src/secrets.h
+src/setup_secrets.h
 .wrangler/
 components/arduino/
 .vscode/

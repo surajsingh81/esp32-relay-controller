@@ -143,18 +143,6 @@
         </form>
       </section>
 
-      <section class="setup-help" aria-labelledby="wifi-setup-title">
-        <h2 id="wifi-setup-title">Need to set up or change Wi-Fi?</h2>
-        <p>Wi-Fi details are entered on the ESP32's local setup page, not sent through this website.</p>
-        <ol>
-          <li>Use the Serial Monitor at 115200 baud to find the ESP32 setup Wi-Fi name and password.</li>
-          <li>Connect your phone to that setup Wi-Fi network.</li>
-          <li>Open the local setup page, scan for your home 2.4 GHz network, and save its password.</li>
-        </ol>
-        <a class="setup-link" href="http://192.168.4.1/">Open ESP32 setup page</a>
-        <p>The link works only while your phone is connected directly to the ESP32 setup Wi-Fi.</p>
-      </section>
-
       <main id="controls" hidden>
         <div id="device-status" class="device-status" data-status="unknown" role="status" aria-live="polite">
           <span class="device-status-dot" aria-hidden="true"></span>
@@ -163,6 +151,17 @@
             <span id="device-status-detail">Waiting for the latest device check-in.</span>
           </div>
         </div>
+        <section class="setup-help" aria-labelledby="wifi-setup-title">
+          <h2 id="wifi-setup-title">Need to set up or change Wi-Fi?</h2>
+          <p>Wi-Fi details are entered on the ESP32's local setup page, not sent through this website.</p>
+          <ol>
+            <li>Find the <strong>ESP32-Relay-Setup-</strong> network in your phone’s Wi-Fi list and connect using the setup password you configured for the ESP32.</li>
+            <li>If asked, stay connected even though this setup network has no internet.</li>
+            <li>Open the local setup page, scan for your home 2.4 GHz network, and save its password.</li>
+          </ol>
+          <a class="setup-link" href="http://192.168.4.1/">Open ESP32 setup page</a>
+          <p>The link works only while your phone is connected directly to the ESP32 setup Wi-Fi. You do not need PlatformIO to enter your home Wi-Fi details.</p>
+        </section>
         <aside class="info-banner">
           <span class="info-icon" aria-hidden="true">i</span>
           <span>Schedules repeat daily in Asia/Kolkata time. If the ESP32 misses polling for more than 15 seconds across a scheduled start, that day's run is skipped.</span>
