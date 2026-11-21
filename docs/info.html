@@ -42,6 +42,11 @@
       .wifi-status{display:flex;align-items:center;justify-content:space-between;gap:12px;margin:12px 0;padding:12px 14px;border:1px solid var(--line);border-radius:13px;background:#f8fafb}
       .wifi-status-label{color:var(--muted);font-size:.78rem;font-weight:800;letter-spacing:.07em;text-transform:uppercase}
       .wifi-status-value{min-width:0;overflow-wrap:anywhere;text-align:right;font-size:.88rem;font-weight:800}
+      .monitor-metrics{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:9px;margin:12px 0}
+      .metric-card{min-width:0;padding:13px;border:1px solid var(--line);border-radius:13px;background:#f8fafb}
+      .metric-label{display:block;margin-bottom:5px;color:var(--muted);font-size:.72rem;font-weight:800;letter-spacing:.07em;text-transform:uppercase}
+      .metric-value{display:block;overflow-wrap:anywhere;font-size:.92rem;font-weight:850}
+      .metric-detail{display:block;margin-top:4px;color:var(--muted);font-size:.72rem;line-height:1.35}
       .device-log-list{display:flex;flex-direction:column;gap:1px;max-height:340px;overflow:auto;margin:0;padding:8px;list-style:none;border-radius:14px;background:#142126;color:#dce7e9;scrollbar-color:#506269 #142126}
       .device-log-entry{display:grid;grid-template-columns:5.25rem 4.5rem minmax(0,1fr);align-items:start;gap:9px;padding:9px 8px;border-bottom:1px solid rgba(220,231,233,.1);font:500 .8rem/1.45 ui-monospace,SFMono-Regular,Menlo,monospace}
       .device-log-entry:last-child{border-bottom:0}
@@ -59,6 +64,8 @@
         .info-grid{grid-template-columns:1fr}
         .info-card,.monitor-panel{padding:16px}
         .device-log-entry{grid-template-columns:4.5rem 3.9rem minmax(0,1fr);gap:7px;padding:8px 5px;font-size:.73rem}
+        .monitor-metrics{grid-template-columns:1fr 1fr}
+        .metric-card:last-child{grid-column:1/-1}
       }
       @media(max-width:360px){
         .app-shell{width:calc(100% - 22px)}
@@ -136,10 +143,27 @@
             <span class="wifi-status-label">Connected Wi-Fi</span>
             <strong id="wifi-status-value" class="wifi-status-value">Checking…</strong>
           </div>
+          <div class="monitor-metrics" aria-label="ESP32 system metrics">
+            <div class="metric-card">
+              <span class="metric-label">CPU</span>
+              <strong id="cpu-status-value" class="metric-value">Checking…</strong>
+              <span id="cpu-status-detail" class="metric-detail">Clock speed</span>
+            </div>
+            <div class="metric-card">
+              <span class="metric-label">Free heap</span>
+              <strong id="heap-status-value" class="metric-value">Checking…</strong>
+              <span id="heap-status-detail" class="metric-detail">Minimum recorded</span>
+            </div>
+            <div class="metric-card">
+              <span class="metric-label">Temperature</span>
+              <strong id="temperature-status-value" class="metric-value">Checking…</strong>
+              <span id="temperature-status-detail" class="metric-detail">Controller sensor</span>
+            </div>
+          </div>
           <ol id="device-log-list" class="device-log-list" role="log" aria-label="Recent ESP32 events" aria-live="off">
             <li class="device-log-empty">No monitor events received yet.</li>
           </ol>
-          <p class="monitor-footnote">Refreshes every five seconds when signed in. Cloudflare keeps the latest 500 events. The SSID and activity appear after the controller reconnects to the internet.</p>
+          <p class="monitor-footnote">Refreshes every five seconds when signed in. Cloudflare keeps the latest 100 events. CPU shows clock speed, heap shows free/minimum memory, and temperature uses the controller sensor.</p>
         </section>
       </main>
     </div>
@@ -152,7 +176,22 @@
       const deviceLogList = document.querySelector("#device-log-list");
       const deviceLogStatus = document.querySelector("#monitor-status");
       const wifiStatusValue = document.querySelector("#wifi-status-value");
+      const cpuStatusValue = document.querySelector("#cpu-status-value");
+      const cpuStatusDetail = document.querySelector("#cpu-status-detail");
+      const heapStatusValue = document.querySelector("#heap-status-value");
+      const heapStatusDetail = document.querySelector("#heap-status-detail");
+      const temperatureStatusValue = document.querySelector("#temperature-status-value");
       let logRefreshTimer;
+
+      function formatUptime(seconds) {
+        const days = Math.floor(seconds / 86400);
+        const hours = Math.floor((seconds % 86400) / 3600);
+        const minutes = Math.floor((seconds % 3600) / 60);
+        if (days > 0) return `${days}d ${hours}h`;
+        if (hours > 0) return `${hours}h ${minutes}m`;
+        if (minutes > 0) return `${minutes}m`;
+        return `${seconds}s`;
+      }
 
       async function refreshDeviceLogs() {
         const token = sessionStorage.getItem(tokenKey);
@@ -185,6 +224,9 @@
           empty.textContent = "No monitor events received yet. Events appear after the controller connects to the internet.";
           deviceLogList.replaceChildren(empty);
           wifiStatusValue.textContent = "Not reported";
+          cpuStatusValue.textContent = "Not reported";
+          heapStatusValue.textContent = "Not reported";
+          temperatureStatusValue.textContent = "Not reported";
         } else {
           let wifiStatus = "Not reported";
           for (const log of result.logs) {
@@ -194,6 +236,25 @@
                 .replace(/\.$/, "");
             } else if (log.message === "Wi-Fi connection lost.") {
               wifiStatus = "Disconnected";
+            }
+            if (log.message.startsWith("System metrics:")) {
+              const cpu = log.message.match(/CPU (\d+) MHz/);
+              const heap = log.message.match(/Heap (\d+) KB \(min (\d+) KB\)/);
+              const temperature = log.message.match(/Temperature (-?\d+(?:\.\d+)?) C/);
+              const uptime = log.message.match(/Uptime (\d+)s/);
+              if (cpu) {
+                cpuStatusValue.textContent = `${cpu[1]} MHz`;
+                cpuStatusDetail.textContent = uptime
+                  ? `Uptime ${formatUptime(Number(uptime[1]))}`
+                  : "Controller clock";
+              }
+              if (heap) {
+                heapStatusValue.textContent = `${heap[1]} KB`;
+                heapStatusDetail.textContent = `Minimum ${heap[2]} KB`;
+              }
+              temperatureStatusValue.textContent = temperature
+                ? `${temperature[1]} C`
+                : "Unavailable";
             }
           }
           wifiStatusValue.textContent = wifiStatus;

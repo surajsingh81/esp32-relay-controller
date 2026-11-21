@@ -101,9 +101,10 @@ Wi-Fi, the home internet connection, or the device being powered off.
 
 Use **Help & info** to view the Wi-Fi setup steps, schedule details, and the
 signed-in **ESP32 Monitor**. The monitor shows timestamped Wi-Fi,
-cloud-service, and output-change events. It shows the name of the Wi-Fi
-network currently connected to and refreshes every five seconds. Cloudflare keeps
-the latest 500 entries. The firmware queues a small number
+cloud-service, output-change, and system-metrics events. It shows the name of the Wi-Fi
+network currently connected to, CPU clock speed, free/minimum heap, and controller
+temperature when the sensor is available. It refreshes every five seconds.
+Cloudflare keeps the latest 100 entries. The firmware queues a small number
 of events while offline and uploads them after connectivity returns. Wi-Fi
 passwords are not included in monitor events; events cannot
 reach the website while the device has no internet connection.

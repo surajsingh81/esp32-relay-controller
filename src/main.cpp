@@ -19,6 +19,7 @@ constexpr uint32_t WIFI_RETRY_INTERVAL_MS = 30000;
 constexpr uint32_t WIFI_STATUS_LOG_INTERVAL_MS = 5000;
 constexpr uint32_t DEVICE_LOG_UPLOAD_INTERVAL_MS = 10000;
 constexpr uint32_t CLOUD_ERROR_LOG_INTERVAL_MS = 60000;
+constexpr uint32_t SYSTEM_METRICS_LOG_INTERVAL_MS = 30000;
 constexpr size_t MAX_PENDING_DEVICE_LOGS = 20;
 constexpr size_t DEVICE_LOG_BATCH_SIZE = 10;
 constexpr char WIFI_SETTINGS_NAMESPACE[] = "relay-wifi";
@@ -109,6 +110,7 @@ uint32_t lastWiFiAttemptAt = 0;
 uint32_t lastWiFiStatusLogAt = 0;
 uint32_t lastDeviceLogUploadAt = 0;
 uint32_t lastCloudErrorLogAt = 0;
+uint32_t lastSystemMetricsLogAt = 0;
 bool wifiWasConnected = false;
 bool cloudStatusKnown = false;
 bool cloudWasAvailable = false;
@@ -160,6 +162,30 @@ static void recordCloudStatus(bool available) {
   }
   cloudWasAvailable = false;
   cloudStatusKnown = true;
+}
+
+static void queueSystemMetrics() {
+  const float temperature = temperatureRead();
+  char message[128];
+  if (isnan(temperature)) {
+    snprintf(message, sizeof(message),
+             "System metrics: CPU %u MHz; Heap %u KB (min %u KB); "
+             "Temperature unavailable; Uptime %lus.",
+             static_cast<unsigned>(getCpuFrequencyMhz()),
+             static_cast<unsigned>(ESP.getFreeHeap() / 1024),
+             static_cast<unsigned>(ESP.getMinFreeHeap() / 1024),
+             static_cast<unsigned long>(millis() / 1000));
+  } else {
+    snprintf(message, sizeof(message),
+             "System metrics: CPU %u MHz; Heap %u KB (min %u KB); "
+             "Temperature %.1f C; Uptime %lus.",
+             static_cast<unsigned>(getCpuFrequencyMhz()),
+             static_cast<unsigned>(ESP.getFreeHeap() / 1024),
+             static_cast<unsigned>(ESP.getMinFreeHeap() / 1024),
+             temperature,
+             static_cast<unsigned long>(millis() / 1000));
+  }
+  queueDeviceLog("info", message);
 }
 
 static const char *wifiStatusName(wl_status_t status) {
@@ -569,6 +595,8 @@ void setup() {
   delay(500);
   Serial.println("\nESP32-C3 relay controller starting.");
   queueDeviceLog("info", "ESP32-C3 relay controller started.");
+  queueSystemMetrics();
+  lastSystemMetricsLogAt = millis();
 
   pinMode(RELAY1_PIN, OUTPUT);
   pinMode(RELAY2_PIN, OUTPUT);
@@ -599,6 +627,10 @@ void loop() {
   setupServer.handleClient();
 
   const uint32_t now = millis();
+  if (now - lastSystemMetricsLogAt >= SYSTEM_METRICS_LOG_INTERVAL_MS) {
+    lastSystemMetricsLogAt = now;
+    queueSystemMetrics();
+  }
   const bool wifiConnected = WiFi.status() == WL_CONNECTED;
   if (wifiConnected) {
     if (!wifiWasConnected) {

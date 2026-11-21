@@ -2,7 +2,7 @@ const encoder = new TextEncoder();
 const DEVICE_ONLINE_WINDOW_MS = 15000;
 const MAX_LOG_BATCH_SIZE = 20;
 const MAX_LOG_MESSAGE_LENGTH = 240;
-const DEVICE_LOG_RETENTION = 500;
+const DEVICE_LOG_RETENTION = 100;
 const MAX_RELAY_SCHEDULES = 20;
 
 function jsonResponse(data, status, corsHeaders) {
