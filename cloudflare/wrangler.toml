@@ -4,6 +4,7 @@ compatibility_date = "2026-11-21"
 
 [vars]
 WEB_ORIGIN = "https://surajsingh81.github.io"
+TIME_ZONE = "Asia/Kolkata"
 
 [[d1_databases]]
 binding = "DB"

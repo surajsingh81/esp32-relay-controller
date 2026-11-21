@@ -10,8 +10,9 @@
       section{border:1px solid #ddd;border-radius:.75rem;padding:1rem;margin:1rem 0}
       button{border:0;border-radius:.4rem;padding:.7rem 1rem;margin:.35rem;color:white;font-weight:700;cursor:pointer}
       button:disabled{opacity:.5;cursor:not-allowed}.on{background:#218838}.off{background:#6c757d}
-      input{display:block;width:min(100%,24rem);box-sizing:border-box;padding:.7rem;margin:.6rem 0}
-      #controls[hidden],#login[hidden]{display:none}#message{min-height:1.5em}
+      input,select{display:block;width:min(100%,24rem);box-sizing:border-box;padding:.7rem;margin:.6rem 0}
+      #controls[hidden],#login[hidden],.relay-controls[hidden],.schedule-form[hidden]{display:none}
+      #message{min-height:1.5em}.hint{color:#555;font-size:.92rem}.mode-row{margin:.75rem 0}
     </style>
   </head>
   <body>
@@ -27,17 +28,52 @@
     </section>
     <main id="controls" hidden>
       <button id="logout" type="button" class="off">Sign out</button>
+      <p class="hint">Automatic schedules use Asia/Kolkata time and repeat daily. If the ESP32 is disconnected across the start and misses polling for more than 15 seconds, that day's run is skipped.</p>
       <section>
         <h2>Relay 1</h2>
-        <p>Current requested state: <strong id="relay1-state">Unknown</strong></p>
-        <button class="on" data-relay="1" data-on="true">ON</button>
-        <button class="off" data-relay="1" data-on="false">OFF</button>
+        <p>Requested output: <strong id="relay1-state">Unknown</strong></p>
+        <div class="mode-row">
+          <label for="relay1-mode">Mode</label>
+          <select id="relay1-mode" data-mode="1">
+            <option value="manual">Manual</option>
+            <option value="auto">Auto</option>
+          </select>
+        </div>
+        <p id="relay1-note" class="hint"></p>
+        <div class="relay-controls" data-manual-controls="1">
+          <button class="on manual-button" data-relay="1" data-on="true" type="button">ON</button>
+          <button class="off manual-button" data-relay="1" data-on="false" type="button">OFF</button>
+        </div>
+        <form class="schedule-form" data-schedule="1" hidden>
+          <label for="relay1-start">Daily start time (Asia/Kolkata)</label>
+          <input id="relay1-start" data-start="1" type="time" required>
+          <label for="relay1-duration">ON duration (minutes, 1–1439)</label>
+          <input id="relay1-duration" data-duration="1" type="number" min="1" max="1439" step="1" required>
+          <button class="on" type="submit">Save daily schedule</button>
+        </form>
       </section>
       <section>
         <h2>Relay 2</h2>
-        <p>Current requested state: <strong id="relay2-state">Unknown</strong></p>
-        <button class="on" data-relay="2" data-on="true">ON</button>
-        <button class="off" data-relay="2" data-on="false">OFF</button>
+        <p>Requested output: <strong id="relay2-state">Unknown</strong></p>
+        <div class="mode-row">
+          <label for="relay2-mode">Mode</label>
+          <select id="relay2-mode" data-mode="2">
+            <option value="manual">Manual</option>
+            <option value="auto">Auto</option>
+          </select>
+        </div>
+        <p id="relay2-note" class="hint"></p>
+        <div class="relay-controls" data-manual-controls="2">
+          <button class="on manual-button" data-relay="2" data-on="true" type="button">ON</button>
+          <button class="off manual-button" data-relay="2" data-on="false" type="button">OFF</button>
+        </div>
+        <form class="schedule-form" data-schedule="2" hidden>
+          <label for="relay2-start">Daily start time (Asia/Kolkata)</label>
+          <input id="relay2-start" data-start="2" type="time" required>
+          <label for="relay2-duration">ON duration (minutes, 1–1439)</label>
+          <input id="relay2-duration" data-duration="2" type="number" min="1" max="1439" step="1" required>
+          <button class="on" type="submit">Save daily schedule</button>
+        </form>
       </section>
     </main>
     <script>
@@ -47,6 +83,7 @@
       const controls = document.querySelector("#controls");
       const message = document.querySelector("#message");
       const tokenKey = "relayControlSession";
+      let refreshTimer;
 
       async function api(path, options = {}) {
         const headers = new Headers(options.headers);
@@ -67,12 +104,48 @@
       function showSignedIn(signedIn) {
         loginPanel.hidden = signedIn;
         controls.hidden = !signedIn;
+        if (refreshTimer) clearInterval(refreshTimer);
+        refreshTimer = signedIn
+          ? setInterval(() => refreshStates(false).catch(handleRefreshError), 10000)
+          : undefined;
       }
 
-      async function refreshStates() {
+      function applyMode(relay, mode) {
+        document.querySelector(`[data-manual-controls="${relay}"]`).hidden = mode !== "manual";
+        document.querySelector(`[data-schedule="${relay}"]`).hidden = mode !== "auto";
+      }
+
+      async function refreshStates(syncSettings) {
         const state = await api("/api/state");
-        document.querySelector("#relay1-state").textContent = state.relay1 ? "ON" : "OFF";
-        document.querySelector("#relay2-state").textContent = state.relay2 ? "ON" : "OFF";
+        for (const relay of [1, 2]) {
+          const item = state.relays[`relay${relay}`];
+          document.querySelector(`#relay${relay}-state`).textContent =
+            `${item.isOn ? "ON" : "OFF"} (${item.mode === "auto" ? "Auto" : "Manual"})`;
+          if (syncSettings) {
+            document.querySelector(`#relay${relay}-mode`).value = item.mode;
+            document.querySelector(`[data-start="${relay}"]`).value = item.startTime;
+            document.querySelector(`[data-duration="${relay}"]`).value = item.durationMinutes;
+          }
+          const mode = document.querySelector(`#relay${relay}-mode`).value;
+          applyMode(relay, mode);
+          document.querySelector(`#relay${relay}-note`).textContent =
+            mode === "auto" && !item.scheduleEnabled
+              ? "No schedule saved yet. Enter a start time and duration to enable Auto mode."
+              : mode === "auto"
+                ? `Daily at ${item.startTime}, ON for ${item.durationMinutes} minute(s).`
+                : "Relay is controlled by the ON/OFF buttons.";
+        }
+        return state;
+      }
+
+      function handleRefreshError(error) {
+        if (error.message === "Authentication required") {
+          sessionStorage.removeItem(tokenKey);
+          showSignedIn(false);
+          message.textContent = "Session expired. Sign in again.";
+        } else {
+          message.textContent = `Unable to refresh relay states: ${error.message}`;
+        }
       }
 
       loginForm.addEventListener("submit", async (event) => {
@@ -87,30 +160,66 @@
           sessionStorage.setItem(tokenKey, result.token);
           document.querySelector("#password").value = "";
           showSignedIn(true);
-          await refreshStates();
+          await refreshStates(true);
           message.textContent = "Signed in. Commands reach the ESP32 when it polls the service.";
         } catch (error) {
           message.textContent = error.message;
         }
       });
 
-      document.querySelectorAll("[data-relay]").forEach((button) => {
+      document.querySelectorAll("[data-mode]").forEach((select) => {
+        select.addEventListener("change", async () => {
+          const relay = select.dataset.mode;
+          applyMode(relay, select.value);
+          message.textContent = "Updating relay mode…";
+          try {
+            await api(`/api/relay/${relay}/mode`, {
+              method: "POST",
+              body: JSON.stringify({ mode: select.value }),
+            });
+            await refreshStates(true);
+            message.textContent = "Relay mode updated.";
+          } catch (error) {
+            message.textContent = error.message;
+            await refreshStates(true).catch(handleRefreshError);
+          }
+        });
+      });
+
+      document.querySelectorAll(".schedule-form").forEach((form) => {
+        form.addEventListener("submit", async (event) => {
+          event.preventDefault();
+          const relay = form.dataset.schedule;
+          const startTime = document.querySelector(`[data-start="${relay}"]`).value;
+          const durationMinutes = Number(document.querySelector(`[data-duration="${relay}"]`).value);
+          message.textContent = "Saving daily schedule…";
+          try {
+            await api(`/api/relay/${relay}/schedule`, {
+              method: "POST",
+              body: JSON.stringify({ startTime, durationMinutes }),
+            });
+            await refreshStates(true);
+            message.textContent = `Relay ${relay} Auto schedule saved.`;
+          } catch (error) {
+            message.textContent = error.message;
+            if (error.message === "Authentication required") handleRefreshError(error);
+          }
+        });
+      });
+
+      document.querySelectorAll(".manual-button").forEach((button) => {
         button.addEventListener("click", async () => {
           message.textContent = "Sending command…";
           try {
-            const state = await api(`/api/relay/${button.dataset.relay}`, {
+            await api(`/api/relay/${button.dataset.relay}`, {
               method: "POST",
               body: JSON.stringify({ on: button.dataset.on === "true" }),
             });
-            document.querySelector("#relay1-state").textContent = state.relay1 ? "ON" : "OFF";
-            document.querySelector("#relay2-state").textContent = state.relay2 ? "ON" : "OFF";
+            await refreshStates(false);
             message.textContent = "Desired state saved. The ESP32 checks for updates every few seconds.";
           } catch (error) {
             message.textContent = error.message;
-            if (error.message === "Authentication required") {
-              sessionStorage.removeItem(tokenKey);
-              showSignedIn(false);
-            }
+            if (error.message === "Authentication required") handleRefreshError(error);
           }
         });
       });
@@ -123,13 +232,9 @@
 
       if (sessionStorage.getItem(tokenKey)) {
         showSignedIn(true);
-        refreshStates().then(() => {
+        refreshStates(true).then(() => {
           message.textContent = "Signed in.";
-        }).catch(() => {
-          sessionStorage.removeItem(tokenKey);
-          showSignedIn(false);
-          message.textContent = "Session expired. Sign in again.";
-        });
+        }).catch(handleRefreshError);
       }
     </script>
   </body>

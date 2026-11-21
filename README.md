@@ -9,31 +9,12 @@ The Worker stores the last requested state in Cloudflare D1. The webpage's
 state is the requested state, not independent electrical feedback from the
 relay hardware.
 
-## 1. Finish Cloudflare authentication
+## 1. Cloudflare authentication
 
-The Worker and D1 database are deployed. Worker URL:
+The Worker and D1 database are deployed. The required Worker secrets are
+already configured; do not set or share their values again unless rotating
+them. Worker URL:
 `https://esp32-relay-api.surajupes-fd1.workers.dev`.
-
-Authentication secrets are intentionally not set yet, so sign-in and device
-polling fail closed until you configure them. In a terminal, generate two
-different random values:
-
-```sh
-openssl rand -hex 32
-```
-
-From the project directory, set the three Worker secrets. Wrangler prompts for
-each value. Use a long, unique password for `CONTROL_PASSWORD`, the first
-random value for `SESSION_SECRET`, and the second random value for
-`DEVICE_TOKEN`. Keep the second random value handy for your local firmware
-configuration. Do not put secrets in GitHub or send them in chat.
-
-```sh
-cd cloudflare
-npx wrangler secret put CONTROL_PASSWORD
-npx wrangler secret put SESSION_SECRET
-npx wrangler secret put DEVICE_TOKEN
-```
 
 The Worker includes a Cloudflare rate-limit binding for login attempts (10
 requests per IP per minute). Keep the Worker secrets private.
@@ -75,10 +56,33 @@ GPIO 4 controls Relay 1; GPIO 5 controls Relay 2. Use relay modules with
 appropriate power and isolation; do not drive relay coils directly from GPIO.
 For active-LOW modules, change `RELAY_ACTIVE_LOW` to `true` in `src/main.cpp`.
 
-Open the published GitHub Pages URL, enter the Worker `CONTROL_PASSWORD`, and
-select ON or OFF. The command is saved in D1 and applied when the ESP32 next
-polls. No port forwarding is required. **Do not forward HTTP or any port to
-the ESP32.**
+Open the published GitHub Pages URL and enter the Worker `CONTROL_PASSWORD`.
+Each relay has its own mode:
+
+- **Manual:** use its ON/OFF buttons.
+- **Auto:** enter a daily start time and ON duration, then save. Schedules use
+  Asia/Kolkata time and repeat daily. If the ESP32 is disconnected across the
+  start and misses polling for more than 15 seconds, that day's run is skipped
+  rather than started late. A schedule is not active until it has been saved.
+
+The Worker stores mode, schedule, and requested states in D1. The webpage
+shows the requested output state, not electrical feedback from the relay.
+No port forwarding is required. **Do not forward HTTP or any port to the
+ESP32.**
+
+## 5. Deploying schedule changes
+
+The schedule feature adds D1 tables without clearing existing relay states.
+Before deploying an updated Worker, apply the schema (it is safe to rerun):
+
+```sh
+cd cloudflare
+npx wrangler d1 execute esp32-relay-state --remote --file=schema.sql
+npx wrangler deploy
+```
+
+GitHub Pages publishes changes to `docs/` when they are pushed to the
+repository's configured branch.
 
 ## Security notes
 
