@@ -1,5 +1,8 @@
 const encoder = new TextEncoder();
 const DEVICE_ONLINE_WINDOW_MS = 15000;
+const MAX_LOG_BATCH_SIZE = 20;
+const MAX_LOG_MESSAGE_LENGTH = 240;
+const DEVICE_LOG_RETENTION = 500;
 
 function jsonResponse(data, status, corsHeaders) {
   return new Response(JSON.stringify(data), {
@@ -31,6 +34,15 @@ function constantTimeEqual(left, right) {
     difference |= (a[index] ?? 0) ^ (b[index] ?? 0);
   }
   return difference === 0;
+}
+
+function isAuthorizedDevice(request, token) {
+  const authorization = request.headers.get("Authorization") ?? "";
+  return Boolean(
+    token &&
+    authorization.startsWith("Bearer ") &&
+    constantTimeEqual(authorization.slice(7), token),
+  );
 }
 
 async function sign(payload, secret) {
@@ -267,12 +279,52 @@ export default {
       }
 
       if (url.pathname === "/api/device/state" && request.method === "GET") {
-        const authorization = request.headers.get("Authorization") ?? "";
-        if (!env.DEVICE_TOKEN || !authorization.startsWith("Bearer ") ||
-            !constantTimeEqual(authorization.slice(7), env.DEVICE_TOKEN)) {
+        if (!isAuthorizedDevice(request, env.DEVICE_TOKEN)) {
           return jsonResponse({ error: "Unauthorized" }, 401, corsHeaders);
         }
         return jsonResponse(await readDeviceState(env.DB, env.TIME_ZONE), 200, corsHeaders);
+      }
+
+      if (url.pathname === "/api/device/logs" && request.method === "POST") {
+        if (!isAuthorizedDevice(request, env.DEVICE_TOKEN)) {
+          return jsonResponse({ error: "Unauthorized" }, 401, corsHeaders);
+        }
+        const body = await request.json();
+        if (!body || typeof body !== "object" || !Array.isArray(body.events) ||
+            body.events.length < 1 || body.events.length > MAX_LOG_BATCH_SIZE) {
+          return jsonResponse({
+            error: `Expected 1–${MAX_LOG_BATCH_SIZE} log events`,
+          }, 400, corsHeaders);
+        }
+
+        const validEvents = body.events.every((event) =>
+          event && typeof event === "object" &&
+          ["info", "warning", "error"].includes(event.level) &&
+          typeof event.message === "string" &&
+          event.message.trim().length > 0 &&
+          event.message.length <= MAX_LOG_MESSAGE_LENGTH);
+        if (!validEvents) {
+          return jsonResponse({
+            error: "Each event needs a valid level and a message up to 240 characters",
+          }, 400, corsHeaders);
+        }
+
+        const receivedAt = Date.now();
+        await env.DB.batch(body.events.map((event) =>
+          env.DB.prepare(
+            "INSERT INTO device_logs (created_at, level, message) VALUES (?, ?, ?)",
+          ).bind(receivedAt, event.level, event.message.trim())));
+        await env.DB.prepare(
+          `DELETE FROM device_logs
+           WHERE id NOT IN (
+             SELECT id FROM device_logs ORDER BY id DESC LIMIT ?
+           )`,
+        ).bind(DEVICE_LOG_RETENTION).run();
+        return jsonResponse(
+          { accepted: body.events.length, receivedAt },
+          202,
+          corsHeaders,
+        );
       }
 
       if (!(await hasValidSession(request, env.SESSION_SECRET))) {
@@ -281,6 +333,27 @@ export default {
 
       if (url.pathname === "/api/state" && request.method === "GET") {
         return jsonResponse(await readStates(env.DB, env.TIME_ZONE), 200, corsHeaders);
+      }
+
+      if (url.pathname === "/api/logs" && request.method === "GET") {
+        const requestedLimit = Number(url.searchParams.get("limit") ?? "100");
+        if (!Number.isInteger(requestedLimit) || requestedLimit < 1 ||
+            requestedLimit > 100) {
+          return jsonResponse({ error: "Log limit must be between 1 and 100" },
+            400, corsHeaders);
+        }
+        const { results } = await env.DB.prepare(
+          `SELECT id, created_at, level, message
+           FROM device_logs ORDER BY id DESC LIMIT ?`,
+        ).bind(requestedLimit).all();
+        return jsonResponse({
+          logs: results.reverse().map((row) => ({
+            id: row.id,
+            createdAt: row.created_at,
+            level: row.level,
+            message: row.message,
+          })),
+        }, 200, corsHeaders);
       }
 
       const modeRoute = /^\/api\/relay\/([12])\/mode$/.exec(url.pathname);

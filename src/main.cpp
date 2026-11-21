@@ -17,6 +17,10 @@ constexpr bool RELAY_ACTIVE_LOW = false;
 constexpr uint32_t POLL_INTERVAL_MS = 3000;
 constexpr uint32_t WIFI_RETRY_INTERVAL_MS = 30000;
 constexpr uint32_t WIFI_STATUS_LOG_INTERVAL_MS = 5000;
+constexpr uint32_t DEVICE_LOG_UPLOAD_INTERVAL_MS = 10000;
+constexpr uint32_t CLOUD_ERROR_LOG_INTERVAL_MS = 60000;
+constexpr size_t MAX_PENDING_DEVICE_LOGS = 20;
+constexpr size_t DEVICE_LOG_BATCH_SIZE = 10;
 constexpr char WIFI_SETTINGS_NAMESPACE[] = "relay-wifi";
 static_assert(sizeof(SETUP_AP_PASSWORD) >= 9 && sizeof(SETUP_AP_PASSWORD) <= 64,
               "Setup hotspot password must be between 8 and 63 characters.");
@@ -101,14 +105,60 @@ bool relay2On = false;
 uint32_t lastPollAt = 0;
 uint32_t lastWiFiAttemptAt = 0;
 uint32_t lastWiFiStatusLogAt = 0;
+uint32_t lastDeviceLogUploadAt = 0;
+uint32_t lastCloudErrorLogAt = 0;
 bool wifiWasConnected = false;
+bool cloudStatusKnown = false;
+bool cloudWasAvailable = false;
 String wifiSsid;
 String wifiPassword;
 String setupApName;
 String setupApPassword;
+struct PendingDeviceLog {
+  char level[8];
+  char message[128];
+};
+PendingDeviceLog pendingDeviceLogs[MAX_PENDING_DEVICE_LOGS];
+size_t pendingDeviceLogHead = 0;
+size_t pendingDeviceLogCount = 0;
 Preferences wifiPreferences;
 DNSServer captiveDns;
 WebServer setupServer(80);
+
+static void queueDeviceLog(const char *level, const char *message) {
+  if (pendingDeviceLogCount == MAX_PENDING_DEVICE_LOGS) {
+    pendingDeviceLogHead = (pendingDeviceLogHead + 1) % MAX_PENDING_DEVICE_LOGS;
+    --pendingDeviceLogCount;
+  }
+  const size_t index =
+      (pendingDeviceLogHead + pendingDeviceLogCount) % MAX_PENDING_DEVICE_LOGS;
+  snprintf(pendingDeviceLogs[index].level, sizeof(pendingDeviceLogs[index].level),
+           "%s", level);
+  snprintf(pendingDeviceLogs[index].message,
+           sizeof(pendingDeviceLogs[index].message), "%s", message);
+  ++pendingDeviceLogCount;
+}
+
+static void recordCloudStatus(bool available) {
+  const uint32_t now = millis();
+  if (available) {
+    if (!cloudStatusKnown || !cloudWasAvailable) {
+      queueDeviceLog("info", "Cloud relay service is reachable.");
+    }
+    cloudWasAvailable = true;
+    cloudStatusKnown = true;
+    return;
+  }
+
+  if (!cloudStatusKnown || cloudWasAvailable ||
+      now - lastCloudErrorLogAt >= CLOUD_ERROR_LOG_INTERVAL_MS) {
+    queueDeviceLog("warning",
+                   "Cloud poll failed; check internet access and device authorization.");
+    lastCloudErrorLogAt = now;
+  }
+  cloudWasAvailable = false;
+  cloudStatusKnown = true;
+}
 
 static const char *wifiStatusName(wl_status_t status) {
   switch (status) {
@@ -250,6 +300,7 @@ static void handleSaveWiFi() {
 
   wifiSsid = newSsid;
   wifiPassword = newPassword;
+  queueDeviceLog("info", "Wi-Fi settings updated; restarting device.");
   Serial.printf("Wi-Fi credentials saved for network '%s'. Password not logged.\n",
                 wifiSsid.c_str());
   setupServer.sendHeader("Cache-Control", "no-store");
@@ -295,6 +346,7 @@ static void startSetupPortal() {
   } else {
     const IPAddress setupIp = WiFi.softAPIP();
     captiveDns.start(53, "*", setupIp);
+    queueDeviceLog("info", "Wi-Fi setup hotspot started.");
     Serial.printf("Wi-Fi setup hotspot: %s\n", setupApName.c_str());
     Serial.println("Setup hotspot password is set in the local setup_secrets.h file.");
     Serial.printf("Connect to the hotspot and open http://%s/\n",
@@ -330,6 +382,7 @@ static bool loadWiFiCredentials() {
   if (!wifiSsid.isEmpty()) {
     Serial.printf("Loaded Wi-Fi settings for '%s' from device storage.\n",
                   wifiSsid.c_str());
+    queueDeviceLog("info", "Saved Wi-Fi settings loaded.");
     return true;
   }
 
@@ -346,10 +399,12 @@ static bool loadWiFiCredentials() {
     wifiPreferences.end();
     Serial.printf("Migrated Wi-Fi settings for '%s' into device storage.\n",
                   wifiSsid.c_str());
+    queueDeviceLog("info", "Existing Wi-Fi settings migrated to local storage.");
     return true;
   }
 
   Serial.println("No Wi-Fi network configured. Use the ESP32 setup hotspot.");
+  queueDeviceLog("warning", "No home Wi-Fi configured; setup hotspot is active.");
   return false;
 }
 
@@ -361,6 +416,7 @@ static void beginWiFiConnection() {
   WiFi.begin(wifiSsid.c_str(), wifiPassword.c_str());
   lastWiFiAttemptAt = millis();
   Serial.printf("Connecting to Wi-Fi '%s'...\n", wifiSsid.c_str());
+  queueDeviceLog("info", "Attempting to connect to the configured Wi-Fi.");
 }
 
 static void setRelay(uint8_t pin, bool &state, bool turnOn, const char *name) {
@@ -376,6 +432,10 @@ static void setRelay(uint8_t pin, bool &state, bool turnOn, const char *name) {
   Serial.printf("%s command applied: %s, GPIO %u set %s\n", name,
                 turnOn ? "ON" : "OFF", pin,
                 outputLevel == HIGH ? "HIGH" : "LOW");
+  char message[128];
+  snprintf(message, sizeof(message), "%s changed to %s (GPIO %u).", name,
+           turnOn ? "ON" : "OFF", pin);
+  queueDeviceLog("info", message);
 }
 
 static void pollCloud() {
@@ -387,6 +447,7 @@ static void pollCloud() {
   Serial.println("Polling relay states from the cloud over HTTPS (TCP port 443)...");
   if (!https.begin(tlsClient, DEVICE_STATE_URL)) {
     Serial.println("Could not start HTTPS request.");
+    recordCloudStatus(false);
     return;
   }
 
@@ -396,6 +457,7 @@ static void pollCloud() {
     const String error = https.errorToString(statusCode);
     Serial.printf("Cloud poll failed (HTTP %d): %s\n", statusCode, error.c_str());
     https.end();
+    recordCloudStatus(false);
     return;
   }
 
@@ -404,6 +466,7 @@ static void pollCloud() {
   https.end();
   if (error) {
     Serial.printf("Invalid cloud response: %s\n", error.c_str());
+    recordCloudStatus(false);
     return;
   }
 
@@ -411,9 +474,11 @@ static void pollCloud() {
   JsonVariantConst relay2 = response["relay2"];
   if (!relay1.is<bool>() || !relay2.is<bool>()) {
     Serial.println("Cloud response is missing relay states.");
+    recordCloudStatus(false);
     return;
   }
 
+  recordCloudStatus(true);
   const bool requestedRelay1 = relay1.as<bool>();
   const bool requestedRelay2 = relay2.as<bool>();
   Serial.printf("Cloud command received: Relay 1=%s, Relay 2=%s\n",
@@ -423,11 +488,67 @@ static void pollCloud() {
   setRelay(RELAY2_PIN, relay2On, requestedRelay2, "Relay 2");
 }
 
+static void uploadDeviceLogs() {
+  if (pendingDeviceLogCount == 0 || WiFi.status() != WL_CONNECTED) {
+    return;
+  }
+
+  lastDeviceLogUploadAt = millis();
+  const size_t uploadCount = pendingDeviceLogCount < DEVICE_LOG_BATCH_SIZE
+      ? pendingDeviceLogCount
+      : DEVICE_LOG_BATCH_SIZE;
+  JsonDocument payload;
+  JsonArray events = payload["events"].to<JsonArray>();
+  for (size_t offset = 0; offset < uploadCount; ++offset) {
+    const size_t index =
+        (pendingDeviceLogHead + offset) % MAX_PENDING_DEVICE_LOGS;
+    JsonObject event = events.add<JsonObject>();
+    event["level"] = pendingDeviceLogs[index].level;
+    event["message"] = pendingDeviceLogs[index].message;
+  }
+
+  String requestBody;
+  serializeJson(payload, requestBody);
+  String logsUrl = DEVICE_STATE_URL;
+  if (logsUrl.endsWith("/state")) {
+    logsUrl.remove(logsUrl.length() - 5);
+    logsUrl += "logs";
+  } else {
+    Serial.println("Cannot derive the device log URL from DEVICE_STATE_URL.");
+    return;
+  }
+
+  WiFiClientSecure tlsClient;
+  tlsClient.useBuiltinCACertBundle();
+  HTTPClient https;
+  https.setTimeout(5000);
+  if (!https.begin(tlsClient, logsUrl)) {
+    Serial.println("Could not start the HTTPS device-log upload.");
+    return;
+  }
+
+  https.addHeader("Authorization", String("Bearer ") + DEVICE_TOKEN);
+  https.addHeader("Content-Type", "application/json");
+  const int statusCode = https.POST(requestBody);
+  https.end();
+  if (statusCode < 200 || statusCode >= 300) {
+    Serial.printf("Device-log upload failed (HTTP %d); will retry.\n", statusCode);
+    return;
+  }
+
+  pendingDeviceLogHead =
+      (pendingDeviceLogHead + uploadCount) % MAX_PENDING_DEVICE_LOGS;
+  pendingDeviceLogCount -= uploadCount;
+  Serial.printf("Uploaded %u device monitor event(s).\n",
+                static_cast<unsigned>(uploadCount));
+}
+
 // Setup
 void setup() {
   Serial.begin(115200);
   delay(500);
   Serial.println("\nESP32-C3 relay controller starting.");
+  queueDeviceLog("info", "ESP32-C3 relay controller started.");
 
   pinMode(RELAY1_PIN, OUTPUT);
   pinMode(RELAY2_PIN, OUTPUT);
@@ -435,6 +556,7 @@ void setup() {
   const uint8_t relayOffLevel = RELAY_ACTIVE_LOW ? HIGH : LOW;
   digitalWrite(RELAY1_PIN, relayOffLevel);
   digitalWrite(RELAY2_PIN, relayOffLevel);
+  queueDeviceLog("info", "Relay outputs initialized OFF.");
   Serial.printf("Relay 1: GPIO %u, initialized OFF (%s).\n", RELAY1_PIN,
                 relayOffLevel == HIGH ? "HIGH" : "LOW");
   Serial.printf("Relay 2: GPIO %u, initialized OFF (%s).\n", RELAY2_PIN,
@@ -462,6 +584,7 @@ void loop() {
     if (!wifiWasConnected) {
       Serial.printf("Wi-Fi connected. IP address: %s\n",
                     WiFi.localIP().toString().c_str());
+      queueDeviceLog("info", "Connected to the configured Wi-Fi network.");
       wifiWasConnected = true;
       lastPollAt = now - POLL_INTERVAL_MS;
     }
@@ -469,11 +592,16 @@ void loop() {
       lastPollAt = now;
       pollCloud();
     }
+    if (pendingDeviceLogCount > 0 &&
+        millis() - lastDeviceLogUploadAt >= DEVICE_LOG_UPLOAD_INTERVAL_MS) {
+      uploadDeviceLogs();
+    }
     return;
   }
 
   if (wifiWasConnected) {
     Serial.printf("Wi-Fi connection lost: %s.\n", wifiStatusName(WiFi.status()));
+    queueDeviceLog("warning", "Wi-Fi connection lost.");
     wifiWasConnected = false;
   }
   if (wifiSsid.isEmpty()) {
@@ -486,6 +614,7 @@ void loop() {
                   wifiStatusName(WiFi.status()), static_cast<int>(WiFi.status()));
   }
   if (now - lastWiFiAttemptAt >= WIFI_RETRY_INTERVAL_MS) {
+    queueDeviceLog("warning", "Wi-Fi reconnect attempt scheduled.");
     beginWiFiConnection();
   }
 }

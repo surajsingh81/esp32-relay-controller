@@ -95,10 +95,18 @@ check-in. It shows **Online** when the device has polled the Worker within
 service has not heard from the device; it cannot tell whether the cause is
 Wi-Fi, the home internet connection, or the device being powered off.
 
+The signed-in **ESP32 Monitor** shows timestamped Wi-Fi, cloud-service, and
+relay-change events. It refreshes every five seconds and Cloudflare retains
+the latest 500 entries. The firmware queues a small number of events while
+offline and uploads them after connectivity returns. Wi-Fi passwords and
+network names are not included in monitor events; events cannot reach the
+website while the device has no internet connection.
+
 ## 5. Deploying schedule changes
 
-The schedule feature adds D1 tables without clearing existing relay states.
-Before deploying an updated Worker, apply the schema (it is safe to rerun):
+The scheduling and monitor features add D1 tables without clearing existing
+relay states. Before deploying an updated Worker, apply the schema (it is safe
+to rerun):
 
 ```sh
 cd cloudflare
@@ -106,8 +114,9 @@ npx wrangler d1 execute esp32-relay-state --remote --file=schema.sql
 npx wrangler deploy
 ```
 
-GitHub Pages publishes changes to `docs/` when they are pushed to the
-repository's configured branch.
+Rebuild and upload the ESP32 firmware after changing `src/main.cpp` so that it
+can send monitor events. GitHub Pages publishes changes to `docs/` when they
+are pushed to the repository's configured branch.
 
 ## Security notes
 

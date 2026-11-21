@@ -54,6 +54,23 @@
       .device-status[data-status=offline] .device-status-dot{background:#c64e42;box-shadow:0 0 0 4px rgba(198,78,66,.12)}
       .info-banner{display:flex;gap:12px;align-items:flex-start;margin:0 0 18px;padding:14px 16px;border:1px solid #d5e9e1;border-radius:16px;background:#edf7f3;color:#315b4c;font-size:.88rem;line-height:1.5}
       .info-icon{flex:0 0 auto;display:grid;place-items:center;width:24px;height:24px;border-radius:50%;background:#d7eee4;color:var(--green-dark);font-weight:900}
+      .monitor-panel{margin-top:20px;padding:20px;border:1px solid var(--line);border-radius:20px;background:#fff;box-shadow:var(--shadow)}
+      .monitor-header{display:flex;align-items:center;justify-content:space-between;gap:16px}
+      .monitor-header h2{margin:4px 0 0;font-size:1.16rem;letter-spacing:-.02em}
+      .monitor-header p{margin:0;color:var(--muted);font-size:.82rem}
+      .monitor-refresh{min-height:42px;padding:.55rem .85rem;background:#edf1f2;color:#42565d}
+      .monitor-status{min-height:22px;margin:12px 0;color:var(--muted);font-size:.8rem}
+      .device-log-list{display:flex;flex-direction:column;gap:1px;max-height:340px;overflow:auto;margin:0;padding:8px;list-style:none;border-radius:14px;background:#142126;color:#dce7e9;scrollbar-color:#506269 #142126}
+      .device-log-entry{display:grid;grid-template-columns:5.25rem 4.5rem minmax(0,1fr);align-items:start;gap:9px;padding:9px 8px;border-bottom:1px solid rgba(220,231,233,.1);font:500 .8rem/1.45 ui-monospace,SFMono-Regular,Menlo,monospace}
+      .device-log-entry:last-child{border-bottom:0}
+      .device-log-time{color:#91a5aa;white-space:nowrap}
+      .device-log-level{font-size:.68rem;font-weight:850;letter-spacing:.07em;text-transform:uppercase}
+      .device-log-level[data-level=info]{color:#87d4b0}
+      .device-log-level[data-level=warning]{color:#ffd27f}
+      .device-log-level[data-level=error]{color:#ff9b90}
+      .device-log-message{min-width:0;overflow-wrap:anywhere}
+      .device-log-empty{padding:18px 12px;color:#aab9bd;font-size:.84rem;line-height:1.5;text-align:center}
+      .monitor-footnote{margin:10px 0 0;color:var(--muted);font-size:.77rem;line-height:1.45}
       .relay-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:18px}
       .relay-card{min-width:0;padding:20px;border:1px solid var(--line);border-radius:20px;background:var(--surface);box-shadow:var(--shadow)}
       .relay-heading{display:flex;align-items:center;gap:12px}
@@ -97,6 +114,8 @@
         .hero{margin-bottom:18px}
         .relay-grid{grid-template-columns:1fr;gap:13px}
         .relay-card{padding:17px}
+        .monitor-panel{padding:16px}
+        .device-log-entry{grid-template-columns:4.5rem 3.9rem minmax(0,1fr);gap:7px;padding:8px 5px;font-size:.73rem}
         .info-banner{font-size:.84rem}
       }
       @media(max-width:360px){
@@ -276,6 +295,20 @@
             </form>
           </article>
         </div>
+        <section class="monitor-panel" aria-labelledby="monitor-title">
+          <div class="monitor-header">
+            <div>
+              <p class="eyebrow">LIVE DEVICE LOG</p>
+              <h2 id="monitor-title">ESP32 Monitor</h2>
+            </div>
+            <button id="refresh-device-logs" class="monitor-refresh" type="button">Refresh</button>
+          </div>
+          <p id="monitor-status" class="monitor-status" role="status" aria-live="polite">Waiting for device events…</p>
+          <ol id="device-log-list" class="device-log-list" role="log" aria-label="Recent ESP32 events" aria-live="off">
+            <li class="device-log-empty">No monitor events received yet. Events appear after the ESP32 connects to the internet.</li>
+          </ol>
+          <p class="monitor-footnote">Auto-refreshes every 5 seconds. The cloud keeps the latest 500 events; only events uploaded while the ESP32 has internet access appear here.</p>
+        </section>
         <p class="footer-note">The status shows the requested output. The ESP32 applies changes on its next check-in; this page does not measure electrical relay feedback.</p>
       </main>
     </div>
@@ -288,8 +321,11 @@
       const logoutButton = document.querySelector("#logout");
       const message = document.querySelector("#message");
       const deviceStatus = document.querySelector("#device-status");
+      const deviceLogList = document.querySelector("#device-log-list");
+      const deviceLogStatus = document.querySelector("#monitor-status");
       const tokenKey = "relayControlSession";
       let refreshTimer;
+      let logRefreshTimer;
 
       async function api(path, options = {}) {
         const headers = new Headers(options.headers);
@@ -312,8 +348,12 @@
         controls.hidden = !signedIn;
         logoutButton.hidden = !signedIn;
         if (refreshTimer) clearInterval(refreshTimer);
+        if (logRefreshTimer) clearInterval(logRefreshTimer);
         refreshTimer = signedIn
           ? setInterval(() => refreshStates(false).catch(handleRefreshError), 10000)
+          : undefined;
+        logRefreshTimer = signedIn
+          ? setInterval(() => refreshDeviceLogs().catch(handleLogRefreshError), 5000)
           : undefined;
       }
 
@@ -387,6 +427,64 @@
         return state;
       }
 
+      function renderDeviceLogs(logs) {
+        if (!logs.length) {
+          const empty = document.createElement("li");
+          empty.className = "device-log-empty";
+          empty.textContent =
+            "No monitor events received yet. Events appear after the ESP32 connects to the internet.";
+          deviceLogList.replaceChildren(empty);
+          return;
+        }
+
+        const entries = logs.map((log) => {
+          const item = document.createElement("li");
+          item.className = "device-log-entry";
+
+          const timestamp = new Date(log.createdAt);
+          const time = document.createElement("time");
+          time.className = "device-log-time";
+          time.dateTime = timestamp.toISOString();
+          time.textContent = timestamp.toLocaleTimeString([], {
+            hour: "2-digit",
+            minute: "2-digit",
+            second: "2-digit",
+          });
+          time.title = timestamp.toLocaleString();
+
+          const level = document.createElement("span");
+          level.className = "device-log-level";
+          level.dataset.level = log.level;
+          level.textContent = log.level;
+
+          const messageText = document.createElement("span");
+          messageText.className = "device-log-message";
+          messageText.textContent = log.message;
+          item.append(time, level, messageText);
+          return item;
+        });
+        deviceLogList.replaceChildren(...entries);
+        deviceLogList.scrollTop = deviceLogList.scrollHeight;
+      }
+
+      async function refreshDeviceLogs() {
+        const result = await api("/api/logs?limit=100");
+        if (!Array.isArray(result.logs)) {
+          throw new Error("The control service returned an invalid monitor response");
+        }
+        renderDeviceLogs(result.logs);
+        deviceLogStatus.textContent =
+          `${result.logs.length} recent event(s) · Updated ${new Date().toLocaleTimeString()}`;
+      }
+
+      function handleLogRefreshError(error) {
+        if (error.message === "Authentication required") {
+          handleRefreshError(error);
+          return;
+        }
+        deviceLogStatus.textContent = `Unable to refresh monitor: ${error.message}`;
+      }
+
       function handleRefreshError(error) {
         if (error.message === "Authentication required") {
           sessionStorage.removeItem(tokenKey);
@@ -416,6 +514,7 @@
           document.querySelector("#password").value = "";
           showSignedIn(true);
           await refreshStates(true);
+          await refreshDeviceLogs().catch(handleLogRefreshError);
           message.textContent = "Signed in. Your relay states are up to date.";
         } catch (error) {
           message.textContent = error.message;
@@ -488,6 +587,18 @@
         });
       });
 
+      document.querySelector("#refresh-device-logs").addEventListener("click", async (event) => {
+        const button = event.currentTarget;
+        button.disabled = true;
+        try {
+          await refreshDeviceLogs();
+        } catch (error) {
+          handleLogRefreshError(error);
+        } finally {
+          button.disabled = false;
+        }
+      });
+
       logoutButton.addEventListener("click", () => {
         sessionStorage.removeItem(tokenKey);
         showSignedIn(false);
@@ -499,6 +610,7 @@
         refreshStates(true).then(() => {
           message.textContent = "Signed in.";
         }).catch(handleRefreshError);
+        refreshDeviceLogs().catch(handleLogRefreshError);
       }
     </script>
   </body>
