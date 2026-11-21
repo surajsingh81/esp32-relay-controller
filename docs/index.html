@@ -37,6 +37,12 @@
       input:focus{border-color:var(--green)}
       .login-submit{width:100%;margin-top:14px;background:var(--ink);color:#fff}
       .login-submit:hover:not(:disabled){background:#29434b}
+      .setup-help{max-width:620px;margin:16px 0;padding:18px 20px;border:1px solid var(--line);border-radius:18px;background:#fff}
+      .setup-help h2{margin:0 0 7px;font-size:1.04rem}
+      .setup-help p,.setup-help ol{margin:8px 0;color:var(--muted);font-size:.87rem;line-height:1.55}
+      .setup-help ol{padding-left:1.35rem}
+      .setup-link{display:inline-flex;align-items:center;justify-content:center;min-height:44px;margin-top:3px;padding:0 13px;border:1px solid var(--line);border-radius:11px;color:var(--ink);font-weight:750;text-decoration:none}
+      .setup-link:hover{background:#edf1f2}
       .device-status{display:flex;align-items:flex-start;gap:12px;margin:0 0 14px;padding:14px 16px;border:1px solid var(--line);border-radius:16px;background:#fff}
       .device-status-dot{flex:0 0 auto;width:11px;height:11px;margin:5px 0 0;border-radius:50%;background:#a07820;box-shadow:0 0 0 4px #f7efd9}
       .device-status-copy{display:grid;gap:3px;min-width:0}
@@ -135,6 +141,18 @@
           <input id="password" type="password" autocomplete="current-password" required>
           <button class="login-submit" type="submit">Sign in</button>
         </form>
+      </section>
+
+      <section class="setup-help" aria-labelledby="wifi-setup-title">
+        <h2 id="wifi-setup-title">Need to set up or change Wi-Fi?</h2>
+        <p>Wi-Fi details are entered on the ESP32's local setup page, not sent through this website.</p>
+        <ol>
+          <li>Use the Serial Monitor at 115200 baud to find the ESP32 setup Wi-Fi name and password.</li>
+          <li>Connect your phone to that setup Wi-Fi network.</li>
+          <li>Open the local setup page, scan for your home 2.4 GHz network, and save its password.</li>
+        </ol>
+        <a class="setup-link" href="http://192.168.4.1/">Open ESP32 setup page</a>
+        <p>The link works only while your phone is connected directly to the ESP32 setup Wi-Fi.</p>
       </section>
 
       <main id="controls" hidden>

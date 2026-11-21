@@ -31,19 +31,35 @@ password is not embedded in the page.
 
 1. In `src/`, copy `secrets.example.h` to `secrets.h`. This file is ignored by
    Git.
-2. Fill in `WIFI_SSID` and `WIFI_PASSWORD` for your 2.4 GHz home Wi-Fi.
-3. Set `DEVICE_TOKEN` to the exact same value used for the Worker secret.
-4. `DEVICE_STATE_URL` is already set in `secrets.example.h` to the deployed
+2. Set `DEVICE_TOKEN` to the exact same value used for the Worker secret.
+3. `DEVICE_STATE_URL` is already set in `secrets.example.h` to the deployed
    Worker endpoint; confirm it if you copied an older template.
-5. In VS Code, install the PlatformIO IDE extension and open this project.
+4. In VS Code, install the PlatformIO IDE extension and open this project.
    Confirm the board in `platformio.ini` is `esp32-c3-devkitm-1` or change it
    to match your board.
-6. Connect the ESP32-C3 by USB. Choose **PlatformIO: Build**, then
+5. Connect the ESP32-C3 by USB. Choose **PlatformIO: Build**, then
    **PlatformIO: Upload**. Open **PlatformIO: Monitor** at 115200 baud.
 
-The Serial Monitor reports Wi-Fi connection attempts and IP address, relay
-initialization, cloud polling on HTTPS/TCP port 443, desired relay states
-received from the page, and the GPIO level applied when a relay changes.
+### Enter Wi-Fi details from a phone
+
+The ESP32 starts a password-protected setup hotspot. Its name and a randomly
+generated hotspot password are printed in the Serial Monitor. The hotspot
+password changes after each ESP32 restart. Connect your phone to that Wi-Fi
+network, then open `http://192.168.4.1/` (some phones open the setup page
+automatically). On the local page, scan for or enter your 2.4 GHz home Wi-Fi
+name and password, then choose **Save and connect**. The ESP32 saves the
+credentials locally and restarts. The setup hotspot remains available for
+later Wi-Fi changes.
+
+The GitHub Pages control site cannot configure Wi-Fi directly: it is hosted
+remotely and cannot reach an ESP32 that is not already online. Use the
+ESP32-hosted setup page for Wi-Fi credentials. They are stored in the ESP32's
+local NVS settings and are not sent to Cloudflare or GitHub.
+
+The Serial Monitor reports the setup hotspot name/password, Wi-Fi connection
+attempts and assigned IP address, relay initialization, cloud polling on
+HTTPS/TCP port 443, desired relay states received from the page, and the GPIO
+level applied when a relay changes. It never logs the home Wi-Fi password.
 
 The ESP32 starts both relays OFF and polls the Worker about every three
 seconds. It needs outbound DNS and HTTPS (TCP port 443) access to the Worker.
@@ -94,8 +110,11 @@ repository's configured branch.
 
 - The GitHub Pages files and their source are public. The password is held by
   the Worker, not by the page.
-- `src/secrets.h` contains Wi-Fi and device credentials. Keep it out of Git;
-  rotate the device token if it is ever exposed.
+- `src/secrets.h` contains the device token and is ignored by Git. Wi-Fi
+  credentials are stored in the ESP32's local NVS storage; rotate the device
+  token if it is ever exposed.
+- The setup hotspot password is random and printed to the USB Serial Monitor
+  at each boot. Do not share that password.
 - The browser session token is held in that browser tab's `sessionStorage` and
   expires after six hours. Signing out clears that browser's copy.
 - Anyone with the shared control password can operate the relays. Use a unique
