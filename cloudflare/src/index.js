@@ -112,6 +112,9 @@ export default {
     const url = new URL(request.url);
     try {
       if (url.pathname === "/api/login" && request.method === "POST") {
+        if (!env.CONTROL_PASSWORD || !env.SESSION_SECRET) {
+          return jsonResponse({ error: "Authentication is not configured" }, 503, corsHeaders);
+        }
         const clientIp = request.headers.get("CF-Connecting-IP") ?? "unknown";
         const rateLimit = await env.LOGIN_LIMITER.limit({ key: clientIp });
         if (!rateLimit.success) {
@@ -132,7 +135,7 @@ export default {
 
       if (url.pathname === "/api/device/state" && request.method === "GET") {
         const authorization = request.headers.get("Authorization") ?? "";
-        if (!authorization.startsWith("Bearer ") ||
+        if (!env.DEVICE_TOKEN || !authorization.startsWith("Bearer ") ||
             !constantTimeEqual(authorization.slice(7), env.DEVICE_TOKEN)) {
           return jsonResponse({ error: "Unauthorized" }, 401, corsHeaders);
         }
