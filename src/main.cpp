@@ -604,7 +604,10 @@ void loop() {
     if (!wifiWasConnected) {
       Serial.printf("Wi-Fi connected. IP address: %s\n",
                     WiFi.localIP().toString().c_str());
-      queueDeviceLog("info", "Connected to the configured Wi-Fi network.");
+      char wifiMessage[160];
+      snprintf(wifiMessage, sizeof(wifiMessage),
+               "Connected to Wi-Fi network: %s.", WiFi.SSID().c_str());
+      queueDeviceLog("info", wifiMessage);
       wifiWasConnected = true;
       lastPollAt = now - POLL_INTERVAL_MS;
     }

@@ -131,8 +131,7 @@ async function readRelaySettings(database) {
   const { results } = await database
     .prepare(
       `SELECT state.relay_id, state.is_on, settings.mode, settings.start_time,
-              settings.duration_minutes, settings.schedule_enabled,
-              metadata.name
+              settings.duration_minutes, metadata.name
        FROM relay_state AS state
        LEFT JOIN relay_settings AS settings ON settings.relay_id = state.relay_id
        LEFT JOIN relay_metadata AS metadata ON metadata.relay_id = state.relay_id
@@ -146,7 +145,6 @@ async function readRelaySettings(database) {
     manualOn: row.is_on === 1,
     startTime: row.start_time ?? "08:00",
     durationMinutes: row.duration_minutes ?? 30,
-    scheduleEnabled: row.schedule_enabled === 1,
   }));
 }
 

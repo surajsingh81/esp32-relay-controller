@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <meta name="referrer" content="no-referrer">
     <meta name="theme-color" content="#f3f6f7">
-    <title>ESP32 Relay Control</title>
+    <title>Home Control</title>
     <style>
       :root{color-scheme:light;--ink:#172b32;--muted:#62747a;--line:#dce5e7;--surface:#fff;--page:#f3f6f7;--green:#147d58;--green-dark:#0d6547;--green-pale:#e5f5ee;--gray:#566970;--shadow:0 12px 32px rgba(27,54,62,.08)}
       *{box-sizing:border-box}
@@ -125,7 +125,7 @@
           <div class="brand-mark" aria-hidden="true">R</div>
           <div>
             <p class="brand-caption">Home control</p>
-            <p class="brand-name">Relay Hub</p>
+            <p class="brand-name">Home Control</p>
           </div>
         </div>
         <nav class="topbar-actions" aria-label="Account navigation">
@@ -135,7 +135,7 @@
       </header>
 
       <section class="hero">
-        <h1>Manage your relays</h1>
+        <h1>Manage your devices</h1>
       </section>
 
       <p id="message" role="status" aria-live="polite"></p>
@@ -153,19 +153,19 @@
         <div id="device-status" class="device-status" data-status="unknown" role="status" aria-live="polite">
           <span class="device-status-dot" aria-hidden="true"></span>
           <div class="device-status-copy">
-            <strong id="device-status-title">Checking ESP32 status…</strong>
+            <strong id="device-status-title">Checking controller status…</strong>
             <span id="device-status-detail">Waiting for the latest device check-in.</span>
           </div>
         </div>
         <div class="relay-grid">
           <article class="relay-card">
             <div class="relay-heading">
-              <span class="relay-mark" aria-hidden="true">R1</span>
+              <span class="relay-mark" aria-hidden="true">D1</span>
               <div class="relay-title">
-                <h2 id="relay1-name">Relay 1</h2>
-                <p>GPIO 4</p>
+                <h2 id="relay1-name">Device 1</h2>
+                <p>Output on GPIO 4</p>
               </div>
-              <div id="relay1-chip" class="state-chip" aria-label="Relay 1 requested state">
+              <div id="relay1-chip" class="state-chip" aria-label="Device 1 requested state">
                 <span class="state-dot" aria-hidden="true"></span>
                 <strong id="relay1-state">Unknown</strong>
               </div>
@@ -174,7 +174,7 @@
               <summary>Edit device name</summary>
               <form class="rename-form" data-name-form="1">
                 <label for="relay1-name-input">Device / machine name</label>
-                <input id="relay1-name-input" data-device-name="1" type="text" maxlength="24" value="Relay 1" required>
+                <input id="relay1-name-input" data-device-name="1" type="text" maxlength="24" value="Device 1" required>
                 <button class="save-name" type="submit">Save name</button>
               </form>
             </details>
@@ -191,7 +191,7 @@
                 </label>
               </div>
             </fieldset>
-            <p id="relay1-note" class="mode-note">Relay is controlled by the ON/OFF buttons.</p>
+            <p id="relay1-note" class="mode-note">Device is controlled by the ON/OFF buttons.</p>
             <div class="relay-controls" data-manual-controls="1">
               <p class="control-label">Manual controls</p>
               <div class="manual-actions">
@@ -205,7 +205,7 @@
             </div>
             <form class="schedule-panel schedule-form" data-schedule="1" hidden>
               <h3 class="schedule-heading">Daily ON windows</h3>
-              <p class="schedule-intro">Create up to 20 start times. The relay stays ON while any saved window is active.</p>
+              <p class="schedule-intro">Create up to 20 start times. The device stays ON while any saved window is active.</p>
               <div class="schedule-rows" data-schedule-list="1"></div>
               <p class="schedule-count" data-schedule-count="1"></p>
               <p class="timezone-note">Every day in Asia/Kolkata time · duration 1–1439 minutes · duplicate start times are not allowed.</p>
@@ -218,12 +218,12 @@
 
           <article class="relay-card">
             <div class="relay-heading">
-              <span class="relay-mark" aria-hidden="true">R2</span>
+              <span class="relay-mark" aria-hidden="true">D2</span>
               <div class="relay-title">
-                <h2 id="relay2-name">Relay 2</h2>
-                <p>GPIO 5</p>
+                <h2 id="relay2-name">Device 2</h2>
+                <p>Output on GPIO 5</p>
               </div>
-              <div id="relay2-chip" class="state-chip" aria-label="Relay 2 requested state">
+              <div id="relay2-chip" class="state-chip" aria-label="Device 2 requested state">
                 <span class="state-dot" aria-hidden="true"></span>
                 <strong id="relay2-state">Unknown</strong>
               </div>
@@ -232,7 +232,7 @@
               <summary>Edit device name</summary>
               <form class="rename-form" data-name-form="2">
                 <label for="relay2-name-input">Device / machine name</label>
-                <input id="relay2-name-input" data-device-name="2" type="text" maxlength="24" value="Relay 2" required>
+                <input id="relay2-name-input" data-device-name="2" type="text" maxlength="24" value="Device 2" required>
                 <button class="save-name" type="submit">Save name</button>
               </form>
             </details>
@@ -249,7 +249,7 @@
                 </label>
               </div>
             </fieldset>
-            <p id="relay2-note" class="mode-note">Relay is controlled by the ON/OFF buttons.</p>
+            <p id="relay2-note" class="mode-note">Device is controlled by the ON/OFF buttons.</p>
             <div class="relay-controls" data-manual-controls="2">
               <p class="control-label">Manual controls</p>
               <div class="manual-actions">
@@ -263,7 +263,7 @@
             </div>
             <form class="schedule-panel schedule-form" data-schedule="2" hidden>
               <h3 class="schedule-heading">Daily ON windows</h3>
-              <p class="schedule-intro">Create up to 20 start times. The relay stays ON while any saved window is active.</p>
+              <p class="schedule-intro">Create up to 20 start times. The device stays ON while any saved window is active.</p>
               <div class="schedule-rows" data-schedule-list="2"></div>
               <p class="schedule-count" data-schedule-count="2"></p>
               <p class="timezone-note">Every day in Asia/Kolkata time · duration 1–1439 minutes · duplicate start times are not allowed.</p>
@@ -399,20 +399,20 @@
         const detail = document.querySelector("#device-status-detail");
         if (!status || typeof status.online !== "boolean") {
           deviceStatus.dataset.status = "unknown";
-          title.textContent = "ESP32 status unavailable";
+          title.textContent = "Controller status unavailable";
           detail.textContent = "The control service did not return device connection details.";
         } else if (status.online) {
           deviceStatus.dataset.status = "online";
-          title.textContent = "ESP32 online";
+          title.textContent = "Controller online";
           detail.textContent = `Last check-in ${formatAge(status.lastSeenSecondsAgo ?? 0)}.`;
         } else if (status.lastSeenAt) {
           deviceStatus.dataset.status = "offline";
-          title.textContent = "ESP32 offline";
+          title.textContent = "Controller offline";
           detail.textContent =
             `Last check-in ${formatAge(status.lastSeenSecondsAgo ?? 0)}. Check the device's Wi-Fi and internet connection.`;
         } else {
           deviceStatus.dataset.status = "offline";
-          title.textContent = "ESP32 has not checked in";
+          title.textContent = "Controller has not checked in";
           detail.textContent =
             "Check that the device is powered on and connected to Wi-Fi with internet access.";
         }
@@ -424,7 +424,7 @@
         for (const relay of [1, 2]) {
           const item = state.relays[`relay${relay}`];
           const schedules = Array.isArray(item.schedules) ? item.schedules : [];
-          const deviceName = item.name || `Relay ${relay}`;
+          const deviceName = item.name || `Device ${relay}`;
           document.querySelector(`#relay${relay}-name`).textContent = deviceName;
           const nameInput = document.querySelector(`[data-device-name="${relay}"]`);
           if (syncSettings || document.activeElement !== nameInput) {
@@ -447,7 +447,7 @@
               : mode === "auto"
                 ? `Daily: ${schedules.map((schedule) =>
                   `${schedule.startTime} for ${schedule.durationMinutes} min`).join(" · ")}.`
-                : "Relay is controlled by the ON/OFF buttons.";
+                : "Device is controlled by the ON/OFF buttons.";
           document.querySelectorAll(`.manual-button[data-relay="${relay}"]`).forEach((button) => {
             button.classList.toggle("is-selected", (button.dataset.on === "true") === item.isOn);
           });
@@ -465,7 +465,7 @@
           document.querySelector("#device-status-title").textContent = "Connection status unavailable";
           document.querySelector("#device-status-detail").textContent =
             "This browser cannot reach the control service right now.";
-          message.textContent = `Unable to refresh relay states: ${error.message}`;
+          message.textContent = `Unable to refresh device states: ${error.message}`;
         }
       }
 
@@ -484,7 +484,7 @@
           document.querySelector("#password").value = "";
           showSignedIn(true);
           await refreshStates(true);
-          message.textContent = "Signed in. Your relay states are up to date.";
+          message.textContent = "Signed in. Your device states are up to date.";
         } catch (error) {
           message.textContent = error.message;
         } finally {
@@ -508,7 +508,7 @@
             });
             await refreshStates(true);
             form.closest("details").open = false;
-            message.textContent = `${name} saved for Relay ${relay}.`;
+            message.textContent = `${name} saved for output ${relay}.`;
           } catch (error) {
             message.textContent = error.message;
             if (error.message === "Authentication required") handleRefreshError(error);
@@ -532,7 +532,7 @@
             control.disabled = true;
           });
           applyMode(relay, input.value);
-          message.textContent = "Updating relay mode…";
+          message.textContent = "Updating control mode…";
           try {
             await api(`/api/relay/${relay}/mode`, {
               method: "POST",
@@ -542,7 +542,7 @@
             const schedules = state.relays[`relay${relay}`].schedules || [];
             message.textContent = input.value === "auto" && schedules.length === 0
               ? "Auto mode is ready. Add and save at least one daily timing."
-              : "Relay mode updated.";
+              : "Device mode updated.";
           } catch (error) {
             message.textContent = error.message;
             if (error.message === "Authentication required") {
@@ -625,7 +625,7 @@
               body: JSON.stringify({ on: button.dataset.on === "true" }),
             });
             await refreshStates(false);
-            message.textContent = "Desired state saved. The ESP32 checks for updates every few seconds.";
+            message.textContent = "Desired state saved. The controller checks for updates every few seconds.";
           } catch (error) {
             message.textContent = error.message;
             if (error.message === "Authentication required") handleRefreshError(error);

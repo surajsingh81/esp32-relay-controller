@@ -61,8 +61,8 @@ local NVS settings and are not sent to Cloudflare or GitHub.
 
 The Serial Monitor reports the setup hotspot name, Wi-Fi connection attempts
 and assigned IP address, relay initialization, cloud polling on HTTPS/TCP
-port 443, desired relay states received from the page, and the GPIO level
-applied when a relay changes. It never logs Wi-Fi passwords.
+port 443, desired output states received from the page, and the GPIO level
+applied when an output changes. It never logs Wi-Fi passwords.
 
 The ESP32 starts both relays OFF and polls the Worker about every three
 seconds. It needs outbound DNS and HTTPS (TCP port 443) access to the Worker.
@@ -78,7 +78,7 @@ For active-LOW modules, change `RELAY_ACTIVE_LOW` to `true` in `src/main.cpp`.
 Open the published GitHub Pages URL and enter the Worker `CONTROL_PASSWORD`.
 Each relay has its own mode:
 
-- **Device name:** choose **Edit device name** on either relay card to label it
+- **Device name:** choose **Edit device name** on either device card to label it
   for the connected device (for example, Pump or Fan). Names are saved in
   Cloudflare and also appear in firmware relay-change logs.
 - **Manual:** use its ON/OFF buttons.
@@ -101,10 +101,11 @@ Wi-Fi, the home internet connection, or the device being powered off.
 
 Use **Help & info** to view the Wi-Fi setup steps, schedule details, and the
 signed-in **ESP32 Monitor**. The monitor shows timestamped Wi-Fi,
-cloud-service, and relay-change events. It refreshes every five seconds and
-Cloudflare retains the latest 500 entries. The firmware queues a small number
+cloud-service, and output-change events. It shows the name of the Wi-Fi
+network currently connected to and refreshes every five seconds. Cloudflare keeps
+the latest 500 entries. The firmware queues a small number
 of events while offline and uploads them after connectivity returns. Wi-Fi
-passwords and network names are not included in monitor events; events cannot
+passwords are not included in monitor events; events cannot
 reach the website while the device has no internet connection.
 
 ## 5. Deploying schedule changes
@@ -122,6 +123,22 @@ npx wrangler deploy
 Rebuild and upload the ESP32 firmware after changing `src/main.cpp` so that it
 can send monitor events. GitHub Pages publishes changes to `docs/` when they
 are pushed to the repository's configured branch.
+
+## 6. Run tests and build
+
+From the repository root, run the Worker API tests and D1 schema migration
+tests with:
+
+```sh
+node --test cloudflare/test/worker.test.mjs
+python3 cloudflare/test_schema.py
+```
+
+Build the ESP32-C3 firmware with PlatformIO:
+
+```sh
+pio run
+```
 
 ## Security notes
 

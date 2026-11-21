@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <meta name="referrer" content="no-referrer">
     <meta name="theme-color" content="#f3f6f7">
-    <title>Help &amp; Info | ESP32 Relay Control</title>
+    <title>Help &amp; Info | Home Control</title>
     <style>
       :root{color-scheme:light;--ink:#172b32;--muted:#62747a;--line:#dce5e7;--green:#147d58;--green-dark:#0d6547;--page:#f3f6f7;--shadow:0 12px 32px rgba(27,54,62,.08)}
       *{box-sizing:border-box}
@@ -39,6 +39,9 @@
       .monitor-refresh{min-height:42px;padding:.55rem .85rem;border:0;border-radius:12px;background:#edf1f2;color:#42565d;font-weight:750}
       .monitor-refresh:disabled{opacity:.6;cursor:wait}
       .monitor-status{min-height:22px;margin:12px 0;color:var(--muted);font-size:.8rem}
+      .wifi-status{display:flex;align-items:center;justify-content:space-between;gap:12px;margin:12px 0;padding:12px 14px;border:1px solid var(--line);border-radius:13px;background:#f8fafb}
+      .wifi-status-label{color:var(--muted);font-size:.78rem;font-weight:800;letter-spacing:.07em;text-transform:uppercase}
+      .wifi-status-value{min-width:0;overflow-wrap:anywhere;text-align:right;font-size:.88rem;font-weight:800}
       .device-log-list{display:flex;flex-direction:column;gap:1px;max-height:340px;overflow:auto;margin:0;padding:8px;list-style:none;border-radius:14px;background:#142126;color:#dce7e9;scrollbar-color:#506269 #142126}
       .device-log-entry{display:grid;grid-template-columns:5.25rem 4.5rem minmax(0,1fr);align-items:start;gap:9px;padding:9px 8px;border-bottom:1px solid rgba(220,231,233,.1);font:500 .8rem/1.45 ui-monospace,SFMono-Regular,Menlo,monospace}
       .device-log-entry:last-child{border-bottom:0}
@@ -70,7 +73,7 @@
       <header class="topbar">
         <div class="brand">
           <div class="brand-mark" aria-hidden="true">R</div>
-          <p class="brand-name">Relay Hub</p>
+          <p class="brand-name">Home Control</p>
         </div>
         <nav class="topbar-actions" aria-label="Account navigation">
           <a class="nav-link" href="index.html">Dashboard</a>
@@ -80,42 +83,42 @@
 
       <main>
         <h1>Help &amp; device information</h1>
-        <p class="lead">Setup steps, schedule details, and live ESP32 activity.</p>
+        <p class="lead">Setup steps, schedule details, and live controller activity.</p>
 
         <div class="info-grid">
           <section class="info-card" aria-labelledby="wifi-title">
             <h2 id="wifi-title">Set up Wi-Fi</h2>
             <ol>
-              <li>Connect your phone to the ESP32's <strong>ESP32-Relay-Setup-</strong> hotspot using your setup password.</li>
+              <li>Connect your phone to the controller's <strong>ESP32-Relay-Setup-</strong> hotspot using your setup password.</li>
               <li>Stay connected if your phone warns that the hotspot has no internet.</li>
               <li>Open the setup page, select your 2.4 GHz home network, enter its password, and save.</li>
             </ol>
             <a class="setup-link" href="http://192.168.4.1/">Open ESP32 setup</a>
-            <p>Your phone must be connected directly to the ESP32 hotspot for this link to work. Wi-Fi credentials are saved on the ESP32 and are not sent to the cloud.</p>
+            <p>Your phone must be connected directly to the controller hotspot for this link to work. Wi-Fi credentials are saved on the controller and are not sent to the cloud.</p>
           </section>
 
           <section class="info-card" aria-labelledby="schedules-title">
             <h2 id="schedules-title">Automatic schedules</h2>
             <ul>
-              <li>Each relay can have up to 20 daily start times and durations.</li>
+              <li>Each device output can have up to 20 daily start times and durations.</li>
               <li>All times use Asia/Kolkata time and repeat daily.</li>
-              <li>The relay stays ON while any saved timing is active; overlapping timings do not switch it OFF between windows.</li>
-              <li>If the ESP32 misses a timing's start while offline for more than 15 seconds, that window is skipped for the day.</li>
+              <li>The device stays ON while any saved timing is active; overlapping timings do not switch it OFF between windows.</li>
+              <li>If the controller misses a timing's start while offline for more than 15 seconds, that window is skipped for the day.</li>
             </ul>
           </section>
 
           <section class="info-card" aria-labelledby="connection-title">
-            <h2 id="connection-title">Connection and relay status</h2>
-            <p>The dashboard shows the requested output state, not electrical feedback from the relay hardware. The ESP32 applies changes on its next check-in.</p>
+            <h2 id="connection-title">Connection and device status</h2>
+            <p>The dashboard shows the requested output state, not independent electrical feedback. The controller applies changes on its next check-in.</p>
             <p>The device connects outbound to the control service over HTTPS. Router port forwarding is not required.</p>
           </section>
 
           <section class="info-card" aria-labelledby="manual-title">
             <h2 id="manual-title">Manual and Auto modes</h2>
             <ul>
-              <li><strong>Manual:</strong> use the ON/OFF buttons to request a relay state.</li>
-              <li><strong>Auto:</strong> add timings and save them. The relay follows the saved daily windows.</li>
-              <li>Switch back to Manual whenever you want to control the relay with buttons.</li>
+              <li><strong>Manual:</strong> use the ON/OFF buttons to request a device state.</li>
+              <li><strong>Auto:</strong> add timings and save them. The device follows the saved daily windows.</li>
+              <li>Switch back to Manual whenever you want to control the device with buttons.</li>
             </ul>
           </section>
         </div>
@@ -129,10 +132,14 @@
             <button id="refresh-device-logs" class="monitor-refresh" type="button">Refresh</button>
           </div>
           <p id="monitor-status" class="monitor-status" role="status" aria-live="polite">Checking sign-in...</p>
+          <div class="wifi-status">
+            <span class="wifi-status-label">Connected Wi-Fi</span>
+            <strong id="wifi-status-value" class="wifi-status-value">Checking…</strong>
+          </div>
           <ol id="device-log-list" class="device-log-list" role="log" aria-label="Recent ESP32 events" aria-live="off">
             <li class="device-log-empty">No monitor events received yet.</li>
           </ol>
-          <p class="monitor-footnote">Refreshes every five seconds when signed in. Cloudflare keeps the latest 500 events. Events appear after the ESP32 reconnects to the internet; Wi-Fi names and passwords are not included.</p>
+          <p class="monitor-footnote">Refreshes every five seconds when signed in. Cloudflare keeps the latest 500 events. The SSID and activity appear after the controller reconnects to the internet.</p>
         </section>
       </main>
     </div>
@@ -144,6 +151,7 @@
       const refreshButton = document.querySelector("#refresh-device-logs");
       const deviceLogList = document.querySelector("#device-log-list");
       const deviceLogStatus = document.querySelector("#monitor-status");
+      const wifiStatusValue = document.querySelector("#wifi-status-value");
       let logRefreshTimer;
 
       async function refreshDeviceLogs() {
@@ -174,9 +182,21 @@
         if (!result.logs.length) {
           const empty = document.createElement("li");
           empty.className = "device-log-empty";
-          empty.textContent = "No monitor events received yet. Events appear after the ESP32 connects to the internet.";
+          empty.textContent = "No monitor events received yet. Events appear after the controller connects to the internet.";
           deviceLogList.replaceChildren(empty);
+          wifiStatusValue.textContent = "Not reported";
         } else {
+          let wifiStatus = "Not reported";
+          for (const log of result.logs) {
+            if (log.message.startsWith("Connected to Wi-Fi network: ")) {
+              wifiStatus = log.message
+                .slice("Connected to Wi-Fi network: ".length)
+                .replace(/\.$/, "");
+            } else if (log.message === "Wi-Fi connection lost.") {
+              wifiStatus = "Disconnected";
+            }
+          }
+          wifiStatusValue.textContent = wifiStatus;
           const entries = result.logs.map((log) => {
             const item = document.createElement("li");
             item.className = "device-log-entry";
