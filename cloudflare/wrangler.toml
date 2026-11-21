@@ -8,7 +8,7 @@ WEB_ORIGIN = "https://surajsingh81.github.io"
 [[d1_databases]]
 binding = "DB"
 database_name = "esp32-relay-state"
-database_id = "REPLACE_WITH_D1_DATABASE_ID"
+database_id = "ef20687b-db1f-4492-9adb-a3891d844e5a"
 
 [[ratelimits]]
 name = "LOGIN_LIMITER"
