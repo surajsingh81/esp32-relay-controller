@@ -9,62 +9,42 @@ The Worker stores the last requested state in Cloudflare D1. The webpage's
 state is the requested state, not independent electrical feedback from the
 relay hardware.
 
-## 1. Set up Cloudflare
+## 1. Finish Cloudflare authentication
 
-Install Node.js, then in a terminal:
+The Worker and D1 database are deployed. Worker URL:
+`https://esp32-relay-api.surajupes-fd1.workers.dev`.
+
+Authentication secrets are intentionally not set yet, so sign-in and device
+polling fail closed until you configure them. In a terminal, generate two
+different random values:
 
 ```sh
-npx wrangler login
-cd cloudflare
-npx wrangler d1 create esp32-relay-state
+openssl rand -hex 32
 ```
 
-Copy the `database_id` from Wrangler's output into `cloudflare/wrangler.toml`.
-Change `WEB_ORIGIN` there to the GitHub Pages origin you will use, for example
-`https://my-github-name.github.io` (no repository path or trailing slash).
-From the `cloudflare` directory, create and initialize the database, then set
-the Worker's secrets:
+From the project directory, set the three Worker secrets. Wrangler prompts for
+each value. Use a long, unique password for `CONTROL_PASSWORD`, the first
+random value for `SESSION_SECRET`, and the second random value for
+`DEVICE_TOKEN`. Keep the second random value handy for your local firmware
+configuration. Do not put secrets in GitHub or send them in chat.
 
 ```sh
-npx wrangler d1 execute esp32-relay-state --remote --file=schema.sql
-openssl rand -hex 32
+cd cloudflare
 npx wrangler secret put CONTROL_PASSWORD
 npx wrangler secret put SESSION_SECRET
 npx wrangler secret put DEVICE_TOKEN
 ```
 
-Use the random output as the `SESSION_SECRET` and `DEVICE_TOKEN` values.
-Choose a long, unique `CONTROL_PASSWORD`; enter each value only at the local
-terminal prompt. Do not put these secrets in GitHub or share them. Use a
-different random token for `DEVICE_TOKEN` from `SESSION_SECRET`.
-
 The Worker includes a Cloudflare rate-limit binding for login attempts (10
-requests per IP per minute). If namespace ID `1001` is already in use in your
-account, change it to another unique numeric ID. Keep the Worker secrets
-private. To deploy:
+requests per IP per minute). Keep the Worker secrets private.
 
-```sh
-npx wrangler deploy
-```
+## 2. Open the GitHub Pages site
 
-Wrangler prints a URL similar to
-`https://esp32-relay-api.<your-account>.workers.dev`. Keep this URL handy.
-
-## 2. Publish the webpage on GitHub Pages
-
-Create a GitHub repository for this project and push the project files, but
-first follow the firmware secrets section below so your private `src/secrets.h`
-is not committed.
-
-In `docs/index.html`, replace `API_BASE` with the deployed Worker origin, for
-example `https://esp32-relay-api.<your-account>.workers.dev` (no trailing
-slash). In `cloudflare/wrangler.toml`, `WEB_ORIGIN` must exactly match your
-GitHub Pages origin.
-
-In the repository's **Settings → Pages**, choose **Deploy from a branch**, the
-branch you pushed (usually `main`), and the `/docs` folder. Save and wait for
-GitHub Pages to publish. The page source is public; only the Worker API
-requires the password. The password is not embedded in the page.
+The public GitHub repository and Pages site are already created:
+[repository](https://github.com/surajsingh81/esp32-relay-controller) and
+[control page](https://surajsingh81.github.io/esp32-relay-controller/).
+The page source is public; only the Worker API requires the password. The
+password is not embedded in the page.
 
 ## 3. Configure and upload the ESP32
 
@@ -72,7 +52,8 @@ requires the password. The password is not embedded in the page.
    Git.
 2. Fill in `WIFI_SSID` and `WIFI_PASSWORD` for your 2.4 GHz home Wi-Fi.
 3. Set `DEVICE_TOKEN` to the exact same value used for the Worker secret.
-4. Set `DEVICE_STATE_URL` to the Worker URL plus `/api/device/state`.
+4. `DEVICE_STATE_URL` is already set in `secrets.example.h` to the deployed
+   Worker endpoint; confirm it if you copied an older template.
 5. In VS Code, install the PlatformIO IDE extension and open this project.
    Confirm the board in `platformio.ini` is `esp32-c3-devkitm-1` or change it
    to match your board.
