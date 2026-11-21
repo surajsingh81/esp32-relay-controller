@@ -4,83 +4,255 @@
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <meta name="referrer" content="no-referrer">
+    <meta name="theme-color" content="#f3f6f7">
     <title>ESP32 Relay Control</title>
     <style>
-      body{font-family:system-ui,sans-serif;max-width:38rem;margin:2rem auto;padding:0 1rem;color:#202124}
-      section{border:1px solid #ddd;border-radius:.75rem;padding:1rem;margin:1rem 0}
-      button{border:0;border-radius:.4rem;padding:.7rem 1rem;margin:.35rem;color:white;font-weight:700;cursor:pointer}
-      button:disabled{opacity:.5;cursor:not-allowed}.on{background:#218838}.off{background:#6c757d}
-      input,select{display:block;width:min(100%,24rem);box-sizing:border-box;padding:.7rem;margin:.6rem 0}
-      #controls[hidden],#login[hidden],.relay-controls[hidden],.schedule-form[hidden]{display:none}
-      #message{min-height:1.5em}.hint{color:#555;font-size:.92rem}.mode-row{margin:.75rem 0}
+      :root{color-scheme:light;--ink:#172b32;--muted:#62747a;--line:#dce5e7;--surface:#fff;--page:#f3f6f7;--green:#147d58;--green-dark:#0d6547;--green-pale:#e5f5ee;--gray:#566970;--shadow:0 12px 32px rgba(27,54,62,.08)}
+      *{box-sizing:border-box}
+      body{margin:0;background:var(--page);color:var(--ink);font-family:ui-sans-serif,system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;-webkit-font-smoothing:antialiased}
+      button,input{font:inherit}
+      button{min-height:48px;border:0;border-radius:14px;padding:.8rem 1rem;font-weight:750;cursor:pointer;transition:background .16s ease,transform .16s ease,box-shadow .16s ease}
+      button:hover:not(:disabled){transform:translateY(-1px)}
+      button:disabled{opacity:.6;cursor:wait}
+      :focus-visible{outline:3px solid #53b892;outline-offset:3px}
+      [hidden]{display:none!important}
+      .app-shell{width:min(100% - 32px,960px);margin:0 auto;padding:24px 0 40px}
+      .topbar{display:flex;align-items:center;justify-content:space-between;gap:16px;margin-bottom:32px}
+      .brand{display:flex;align-items:center;gap:12px}
+      .brand-mark{display:grid;place-items:center;width:44px;height:44px;border-radius:14px;background:var(--ink);color:#fff;font-size:1.15rem;font-weight:800}
+      .brand-name{margin:0;font-size:1.05rem;letter-spacing:-.02em}
+      .brand-caption,.eyebrow{margin:0;color:var(--muted);font-size:.72rem;font-weight:800;letter-spacing:.13em;text-transform:uppercase}
+      .sign-out{min-height:42px;padding:.55rem .85rem;background:transparent;color:var(--gray);border:1px solid var(--line);border-radius:12px}
+      .hero{margin:0 0 22px}
+      .hero .eyebrow{margin-bottom:8px;color:var(--green)}
+      .hero h1{margin:0;font-size:clamp(1.8rem,5vw,2.5rem);line-height:1.1;letter-spacing:-.045em}
+      .hero-copy{max-width:42rem;margin:.7rem 0 0;color:var(--muted);line-height:1.55}
+      #message{min-height:24px;margin:0 0 16px;color:var(--muted);font-size:.93rem}
+      #message:not(:empty){padding:11px 14px;border:1px solid var(--line);border-radius:12px;background:rgba(255,255,255,.72)}
+      .login-card{max-width:480px;padding:24px;border:1px solid var(--line);border-radius:20px;background:var(--surface);box-shadow:var(--shadow)}
+      .login-card h2{margin:0 0 6px;font-size:1.2rem}
+      .login-card p{margin:0 0 18px;color:var(--muted);line-height:1.5}
+      .field-label{display:block;margin:0 0 7px;font-size:.88rem;font-weight:700}
+      input[type=password],input[type=time],input[type=number]{width:100%;min-height:50px;padding:0 13px;border:1px solid #cbd7da;border-radius:12px;background:#fff;color:var(--ink)}
+      input:focus{border-color:var(--green)}
+      .login-submit{width:100%;margin-top:14px;background:var(--ink);color:#fff}
+      .login-submit:hover:not(:disabled){background:#29434b}
+      .info-banner{display:flex;gap:12px;align-items:flex-start;margin:0 0 18px;padding:14px 16px;border:1px solid #d5e9e1;border-radius:16px;background:#edf7f3;color:#315b4c;font-size:.88rem;line-height:1.5}
+      .info-icon{flex:0 0 auto;display:grid;place-items:center;width:24px;height:24px;border-radius:50%;background:#d7eee4;color:var(--green-dark);font-weight:900}
+      .relay-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:18px}
+      .relay-card{min-width:0;padding:20px;border:1px solid var(--line);border-radius:20px;background:var(--surface);box-shadow:var(--shadow)}
+      .relay-heading{display:flex;align-items:center;gap:12px}
+      .relay-mark{display:grid;place-items:center;flex:0 0 46px;height:46px;border-radius:14px;background:#eaf0f2;color:#38515a;font-size:.82rem;font-weight:850;letter-spacing:.04em}
+      .relay-title{min-width:0;flex:1}
+      .relay-title h2{margin:0;font-size:1.15rem;letter-spacing:-.02em}
+      .relay-title p{margin:3px 0 0;color:var(--muted);font-size:.83rem}
+      .state-chip{display:inline-flex;align-items:center;gap:7px;min-height:34px;padding:0 10px;border-radius:999px;background:#edf1f2;color:#52666d;font-size:.78rem;font-weight:850;letter-spacing:.04em}
+      .state-dot{width:8px;height:8px;border-radius:50%;background:#84949a}
+      .state-chip.is-on{background:var(--green-pale);color:var(--green-dark)}
+      .state-chip.is-on .state-dot{background:#1b9b6b;box-shadow:0 0 0 4px rgba(27,155,107,.13)}
+      .mode-fieldset{min-width:0;margin:22px 0 18px;padding:0;border:0}
+      .mode-fieldset legend,.control-label{margin-bottom:9px;color:var(--muted);font-size:.77rem;font-weight:800;letter-spacing:.09em;text-transform:uppercase}
+      .mode-switch{display:grid;grid-template-columns:1fr 1fr;gap:4px;padding:4px;border-radius:13px;background:#edf1f2}
+      .mode-option{position:relative;display:block;cursor:pointer}
+      .mode-option input{position:absolute;width:1px;height:1px;opacity:0}
+      .mode-option span{display:grid;place-items:center;min-height:42px;padding:7px 10px;border-radius:10px;color:var(--muted);font-size:.92rem;font-weight:750;transition:background .15s ease,color .15s ease,box-shadow .15s ease}
+      .mode-option input:checked+span{background:#fff;color:var(--ink);box-shadow:0 2px 6px rgba(27,54,62,.12)}
+      .mode-option input:focus-visible+span{outline:3px solid #53b892;outline-offset:2px}
+      .mode-note{min-height:21px;margin:0 0 14px;color:var(--muted);font-size:.84rem;line-height:1.45}
+      .control-label{margin:0 0 10px}
+      .manual-actions{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+      .relay-button{display:flex;align-items:center;justify-content:center;gap:8px;min-height:54px}
+      .relay-button.on{background:#e8f5ef;color:var(--green-dark)}
+      .relay-button.on:hover:not(:disabled),.relay-button.on.is-selected{background:var(--green);color:#fff}
+      .relay-button.off{background:#edf1f2;color:#42565d}
+      .relay-button.off:hover:not(:disabled),.relay-button.off.is-selected{background:#556970;color:#fff}
+      .button-indicator{width:9px;height:9px;border-radius:50%;background:currentColor;opacity:.8}
+      .schedule-panel{padding:15px;border:1px solid var(--line);border-radius:15px;background:#f8fafb}
+      .schedule-heading{margin:0 0 13px;font-size:.95rem}
+      .schedule-fields{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+      .schedule-fields label{display:block;margin-bottom:7px;font-size:.78rem;font-weight:700;line-height:1.35}
+      .schedule-fields input{min-width:0;min-height:48px}
+      .timezone-note{margin:10px 0 13px;color:var(--muted);font-size:.76rem;line-height:1.4}
+      .save-schedule{width:100%;background:var(--green);color:#fff}
+      .save-schedule:hover:not(:disabled){background:var(--green-dark)}
+      .footer-note{margin:20px 0 0;color:var(--muted);font-size:.78rem;line-height:1.5;text-align:center}
+      @media(max-width:680px){
+        .app-shell{width:min(100% - 28px,480px);padding:17px 0 max(28px,env(safe-area-inset-bottom))}
+        .topbar{margin-bottom:26px}
+        .hero{margin-bottom:18px}
+        .relay-grid{grid-template-columns:1fr;gap:13px}
+        .relay-card{padding:17px}
+        .info-banner{font-size:.84rem}
+      }
+      @media(max-width:360px){
+        .app-shell{width:calc(100% - 22px)}
+        .relay-card{padding:14px}
+        .relay-heading{gap:9px}
+        .relay-mark{flex-basis:40px;height:40px}
+        .state-chip{gap:5px;padding:0 8px;font-size:.72rem}
+        .schedule-fields{grid-template-columns:1fr}
+      }
+      @media(prefers-reduced-motion:reduce){
+        *,*::before,*::after{scroll-behavior:auto!important;transition:none!important}
+      }
     </style>
   </head>
   <body>
-    <h1>ESP32 Relay Control</h1>
-    <p id="message" role="status">Sign in to control the relays.</p>
-    <section id="login">
-      <h2>Password required</h2>
-      <form id="login-form">
-        <label for="password">Control password</label>
-        <input id="password" type="password" autocomplete="current-password" required>
-        <button class="on" type="submit">Sign in</button>
-      </form>
-    </section>
-    <main id="controls" hidden>
-      <button id="logout" type="button" class="off">Sign out</button>
-      <p class="hint">Automatic schedules use Asia/Kolkata time and repeat daily. If the ESP32 is disconnected across the start and misses polling for more than 15 seconds, that day's run is skipped.</p>
-      <section>
-        <h2>Relay 1</h2>
-        <p>Requested output: <strong id="relay1-state">Unknown</strong></p>
-        <div class="mode-row">
-          <label for="relay1-mode">Mode</label>
-          <select id="relay1-mode" data-mode="1">
-            <option value="manual">Manual</option>
-            <option value="auto">Auto</option>
-          </select>
+    <div class="app-shell">
+      <header class="topbar">
+        <div class="brand">
+          <div class="brand-mark" aria-hidden="true">R</div>
+          <div>
+            <p class="brand-caption">Home control</p>
+            <p class="brand-name">Relay Hub</p>
+          </div>
         </div>
-        <p id="relay1-note" class="hint"></p>
-        <div class="relay-controls" data-manual-controls="1">
-          <button class="on manual-button" data-relay="1" data-on="true" type="button">ON</button>
-          <button class="off manual-button" data-relay="1" data-on="false" type="button">OFF</button>
-        </div>
-        <form class="schedule-form" data-schedule="1" hidden>
-          <label for="relay1-start">Daily start time (Asia/Kolkata)</label>
-          <input id="relay1-start" data-start="1" type="time" required>
-          <label for="relay1-duration">ON duration (minutes, 1–1439)</label>
-          <input id="relay1-duration" data-duration="1" type="number" min="1" max="1439" step="1" required>
-          <button class="on" type="submit">Save daily schedule</button>
+        <button id="logout" class="sign-out" type="button" hidden>Sign out</button>
+      </header>
+
+      <section class="hero">
+        <p class="eyebrow">ESP32-C3 · REMOTE CONTROL</p>
+        <h1>Manage your relays</h1>
+        <p class="hero-copy">Control each relay manually or set a daily schedule. Commands are delivered when your ESP32 checks in.</p>
+      </section>
+
+      <p id="message" role="status" aria-live="polite">Sign in to control the relays.</p>
+
+      <section id="login" class="login-card">
+        <h2>Welcome back</h2>
+        <p>Enter your control password to securely manage your device.</p>
+        <form id="login-form">
+          <label class="field-label" for="password">Control password</label>
+          <input id="password" type="password" autocomplete="current-password" required>
+          <button class="login-submit" type="submit">Sign in</button>
         </form>
       </section>
-      <section>
-        <h2>Relay 2</h2>
-        <p>Requested output: <strong id="relay2-state">Unknown</strong></p>
-        <div class="mode-row">
-          <label for="relay2-mode">Mode</label>
-          <select id="relay2-mode" data-mode="2">
-            <option value="manual">Manual</option>
-            <option value="auto">Auto</option>
-          </select>
+
+      <main id="controls" hidden>
+        <aside class="info-banner">
+          <span class="info-icon" aria-hidden="true">i</span>
+          <span>Schedules repeat daily in Asia/Kolkata time. If the ESP32 misses polling for more than 15 seconds across a scheduled start, that day's run is skipped.</span>
+        </aside>
+
+        <div class="relay-grid">
+          <article class="relay-card">
+            <div class="relay-heading">
+              <span class="relay-mark" aria-hidden="true">R1</span>
+              <div class="relay-title">
+                <h2>Relay 1</h2>
+                <p>GPIO 4</p>
+              </div>
+              <div id="relay1-chip" class="state-chip" aria-label="Relay 1 requested state">
+                <span class="state-dot" aria-hidden="true"></span>
+                <strong id="relay1-state">Unknown</strong>
+              </div>
+            </div>
+            <fieldset class="mode-fieldset">
+              <legend>Control mode</legend>
+              <div class="mode-switch">
+                <label class="mode-option">
+                  <input type="radio" name="relay1-mode" data-mode="1" value="manual" checked>
+                  <span>Manual</span>
+                </label>
+                <label class="mode-option">
+                  <input type="radio" name="relay1-mode" data-mode="1" value="auto">
+                  <span>Auto</span>
+                </label>
+              </div>
+            </fieldset>
+            <p id="relay1-note" class="mode-note">Relay is controlled by the ON/OFF buttons.</p>
+            <div class="relay-controls" data-manual-controls="1">
+              <p class="control-label">Manual controls</p>
+              <div class="manual-actions">
+                <button class="relay-button on manual-button" data-relay="1" data-on="true" type="button">
+                  <span class="button-indicator" aria-hidden="true"></span>Turn ON
+                </button>
+                <button class="relay-button off manual-button" data-relay="1" data-on="false" type="button">
+                  <span class="button-indicator" aria-hidden="true"></span>Turn OFF
+                </button>
+              </div>
+            </div>
+            <form class="schedule-panel schedule-form" data-schedule="1" hidden>
+              <h3 class="schedule-heading">Daily schedule</h3>
+              <div class="schedule-fields">
+                <div>
+                  <label for="relay1-start">Start time</label>
+                  <input id="relay1-start" data-start="1" type="time" required>
+                </div>
+                <div>
+                  <label for="relay1-duration">ON duration (minutes)</label>
+                  <input id="relay1-duration" data-duration="1" type="number" min="1" max="1439" step="1" inputmode="numeric" required>
+                </div>
+              </div>
+              <p class="timezone-note">Time zone: Asia/Kolkata. Choose 1–1439 minutes.</p>
+              <button class="save-schedule" type="submit">Save daily schedule</button>
+            </form>
+          </article>
+
+          <article class="relay-card">
+            <div class="relay-heading">
+              <span class="relay-mark" aria-hidden="true">R2</span>
+              <div class="relay-title">
+                <h2>Relay 2</h2>
+                <p>GPIO 5</p>
+              </div>
+              <div id="relay2-chip" class="state-chip" aria-label="Relay 2 requested state">
+                <span class="state-dot" aria-hidden="true"></span>
+                <strong id="relay2-state">Unknown</strong>
+              </div>
+            </div>
+            <fieldset class="mode-fieldset">
+              <legend>Control mode</legend>
+              <div class="mode-switch">
+                <label class="mode-option">
+                  <input type="radio" name="relay2-mode" data-mode="2" value="manual" checked>
+                  <span>Manual</span>
+                </label>
+                <label class="mode-option">
+                  <input type="radio" name="relay2-mode" data-mode="2" value="auto">
+                  <span>Auto</span>
+                </label>
+              </div>
+            </fieldset>
+            <p id="relay2-note" class="mode-note">Relay is controlled by the ON/OFF buttons.</p>
+            <div class="relay-controls" data-manual-controls="2">
+              <p class="control-label">Manual controls</p>
+              <div class="manual-actions">
+                <button class="relay-button on manual-button" data-relay="2" data-on="true" type="button">
+                  <span class="button-indicator" aria-hidden="true"></span>Turn ON
+                </button>
+                <button class="relay-button off manual-button" data-relay="2" data-on="false" type="button">
+                  <span class="button-indicator" aria-hidden="true"></span>Turn OFF
+                </button>
+              </div>
+            </div>
+            <form class="schedule-panel schedule-form" data-schedule="2" hidden>
+              <h3 class="schedule-heading">Daily schedule</h3>
+              <div class="schedule-fields">
+                <div>
+                  <label for="relay2-start">Start time</label>
+                  <input id="relay2-start" data-start="2" type="time" required>
+                </div>
+                <div>
+                  <label for="relay2-duration">ON duration (minutes)</label>
+                  <input id="relay2-duration" data-duration="2" type="number" min="1" max="1439" step="1" inputmode="numeric" required>
+                </div>
+              </div>
+              <p class="timezone-note">Time zone: Asia/Kolkata. Choose 1–1439 minutes.</p>
+              <button class="save-schedule" type="submit">Save daily schedule</button>
+            </form>
+          </article>
         </div>
-        <p id="relay2-note" class="hint"></p>
-        <div class="relay-controls" data-manual-controls="2">
-          <button class="on manual-button" data-relay="2" data-on="true" type="button">ON</button>
-          <button class="off manual-button" data-relay="2" data-on="false" type="button">OFF</button>
-        </div>
-        <form class="schedule-form" data-schedule="2" hidden>
-          <label for="relay2-start">Daily start time (Asia/Kolkata)</label>
-          <input id="relay2-start" data-start="2" type="time" required>
-          <label for="relay2-duration">ON duration (minutes, 1–1439)</label>
-          <input id="relay2-duration" data-duration="2" type="number" min="1" max="1439" step="1" required>
-          <button class="on" type="submit">Save daily schedule</button>
-        </form>
-      </section>
-    </main>
+        <p class="footer-note">The status shows the requested output. The ESP32 applies changes on its next check-in; this page does not measure electrical relay feedback.</p>
+      </main>
+    </div>
+
     <script>
       const API_BASE = "https://esp32-relay-api.surajupes-fd1.workers.dev";
       const loginForm = document.querySelector("#login-form");
       const loginPanel = document.querySelector("#login");
       const controls = document.querySelector("#controls");
+      const logoutButton = document.querySelector("#logout");
       const message = document.querySelector("#message");
       const tokenKey = "relayControlSession";
       let refreshTimer;
@@ -104,6 +276,7 @@
       function showSignedIn(signedIn) {
         loginPanel.hidden = signedIn;
         controls.hidden = !signedIn;
+        logoutButton.hidden = !signedIn;
         if (refreshTimer) clearInterval(refreshTimer);
         refreshTimer = signedIn
           ? setInterval(() => refreshStates(false).catch(handleRefreshError), 10000)
@@ -119,21 +292,27 @@
         const state = await api("/api/state");
         for (const relay of [1, 2]) {
           const item = state.relays[`relay${relay}`];
-          document.querySelector(`#relay${relay}-state`).textContent =
-            `${item.isOn ? "ON" : "OFF"} (${item.mode === "auto" ? "Auto" : "Manual"})`;
+          const stateElement = document.querySelector(`#relay${relay}-state`);
+          const stateChip = document.querySelector(`#relay${relay}-chip`);
+          stateElement.textContent = item.isOn ? "ON" : "OFF";
+          stateChip.classList.toggle("is-on", item.isOn);
+          stateChip.setAttribute("aria-label", `Relay ${relay} requested ${item.isOn ? "ON" : "OFF"}`);
           if (syncSettings) {
-            document.querySelector(`#relay${relay}-mode`).value = item.mode;
+            document.querySelector(`[data-mode="${relay}"][value="${item.mode}"]`).checked = true;
             document.querySelector(`[data-start="${relay}"]`).value = item.startTime;
             document.querySelector(`[data-duration="${relay}"]`).value = item.durationMinutes;
           }
-          const mode = document.querySelector(`#relay${relay}-mode`).value;
+          const mode = document.querySelector(`[data-mode="${relay}"]:checked`).value;
           applyMode(relay, mode);
           document.querySelector(`#relay${relay}-note`).textContent =
             mode === "auto" && !item.scheduleEnabled
-              ? "No schedule saved yet. Enter a start time and duration to enable Auto mode."
+              ? "No schedule saved yet. Add a time and duration to enable Auto."
               : mode === "auto"
-                ? `Daily at ${item.startTime}, ON for ${item.durationMinutes} minute(s).`
+                ? `Every day at ${item.startTime}, ON for ${item.durationMinutes} minute(s).`
                 : "Relay is controlled by the ON/OFF buttons.";
+          document.querySelectorAll(`.manual-button[data-relay="${relay}"]`).forEach((button) => {
+            button.classList.toggle("is-selected", (button.dataset.on === "true") === item.isOn);
+          });
         }
         return state;
       }
@@ -151,6 +330,8 @@
       loginForm.addEventListener("submit", async (event) => {
         event.preventDefault();
         message.textContent = "Signing in…";
+        const submit = loginForm.querySelector("button");
+        submit.disabled = true;
         try {
           const result = await api("/api/login", {
             method: "POST",
@@ -161,21 +342,23 @@
           document.querySelector("#password").value = "";
           showSignedIn(true);
           await refreshStates(true);
-          message.textContent = "Signed in. Commands reach the ESP32 when it polls the service.";
+          message.textContent = "Signed in. Your relay states are up to date.";
         } catch (error) {
           message.textContent = error.message;
+        } finally {
+          submit.disabled = false;
         }
       });
 
-      document.querySelectorAll("[data-mode]").forEach((select) => {
-        select.addEventListener("change", async () => {
-          const relay = select.dataset.mode;
-          applyMode(relay, select.value);
+      document.querySelectorAll("[data-mode]").forEach((input) => {
+        input.addEventListener("change", async () => {
+          const relay = input.dataset.mode;
+          applyMode(relay, input.value);
           message.textContent = "Updating relay mode…";
           try {
             await api(`/api/relay/${relay}/mode`, {
               method: "POST",
-              body: JSON.stringify({ mode: select.value }),
+              body: JSON.stringify({ mode: input.value }),
             });
             await refreshStates(true);
             message.textContent = "Relay mode updated.";
@@ -192,17 +375,21 @@
           const relay = form.dataset.schedule;
           const startTime = document.querySelector(`[data-start="${relay}"]`).value;
           const durationMinutes = Number(document.querySelector(`[data-duration="${relay}"]`).value);
+          const submit = form.querySelector("button");
           message.textContent = "Saving daily schedule…";
+          submit.disabled = true;
           try {
             await api(`/api/relay/${relay}/schedule`, {
               method: "POST",
               body: JSON.stringify({ startTime, durationMinutes }),
             });
             await refreshStates(true);
-            message.textContent = `Relay ${relay} Auto schedule saved.`;
+            message.textContent = `Relay ${relay} schedule saved.`;
           } catch (error) {
             message.textContent = error.message;
             if (error.message === "Authentication required") handleRefreshError(error);
+          } finally {
+            submit.disabled = false;
           }
         });
       });
@@ -210,6 +397,7 @@
       document.querySelectorAll(".manual-button").forEach((button) => {
         button.addEventListener("click", async () => {
           message.textContent = "Sending command…";
+          button.disabled = true;
           try {
             await api(`/api/relay/${button.dataset.relay}`, {
               method: "POST",
@@ -220,11 +408,13 @@
           } catch (error) {
             message.textContent = error.message;
             if (error.message === "Authentication required") handleRefreshError(error);
+          } finally {
+            button.disabled = false;
           }
         });
       });
 
-      document.querySelector("#logout").addEventListener("click", () => {
+      logoutButton.addEventListener("click", () => {
         sessionStorage.removeItem(tokenKey);
         showSignedIn(false);
         message.textContent = "Signed out.";
