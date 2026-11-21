@@ -1,4 +1,5 @@
 const encoder = new TextEncoder();
+const DEVICE_ONLINE_WINDOW_MS = 15000;
 
 function jsonResponse(data, status, corsHeaders) {
   return new Response(JSON.stringify(data), {
@@ -164,12 +165,24 @@ function makeRelayState(relays, skippedSchedules, timeZone, nowMs) {
   return state;
 }
 
+function getDeviceStatus(lastPollMs, nowMs) {
+  const lastSeenMsAgo = lastPollMs > 0 ? Math.max(0, nowMs - lastPollMs) : null;
+  return {
+    online: lastSeenMsAgo !== null && lastSeenMsAgo <= DEVICE_ONLINE_WINDOW_MS,
+    lastSeenAt: lastPollMs > 0 ? new Date(lastPollMs).toISOString() : null,
+    lastSeenSecondsAgo: lastSeenMsAgo === null ? null : Math.floor(lastSeenMsAgo / 1000),
+  };
+}
+
 async function readStates(database, timeZone, nowMs = Date.now()) {
-  const [relays, skippedSchedules] = await Promise.all([
+  const [relays, skippedSchedules, pollState] = await Promise.all([
     readRelaySettings(database),
     readSkippedSchedules(database),
+    database.prepare("SELECT last_poll_ms FROM device_poll_state WHERE id = 1").first(),
   ]);
-  return makeRelayState(relays, skippedSchedules, timeZone, nowMs);
+  const state = makeRelayState(relays, skippedSchedules, timeZone, nowMs);
+  state.device = getDeviceStatus(Number(pollState?.last_poll_ms ?? 0), nowMs);
+  return state;
 }
 
 async function readDeviceState(database, timeZone) {
@@ -189,7 +202,8 @@ async function readDeviceState(database, timeZone) {
     if (relay.mode !== "auto" || !relay.scheduleEnabled) continue;
 
     const window = getScheduledWindow(relay, localClock);
-    const pollWasInterrupted = !lastPollMs || nowMs - lastPollMs > 15000;
+    const pollWasInterrupted = !lastPollMs ||
+      nowMs - lastPollMs > DEVICE_ONLINE_WINDOW_MS;
     const missedStart = lastPollClock === null ||
       lastPollClock.absoluteSeconds < window.occurrenceStart;
     if (window.active && pollWasInterrupted && missedStart) {

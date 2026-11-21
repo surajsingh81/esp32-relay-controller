@@ -37,6 +37,15 @@
       input:focus{border-color:var(--green)}
       .login-submit{width:100%;margin-top:14px;background:var(--ink);color:#fff}
       .login-submit:hover:not(:disabled){background:#29434b}
+      .device-status{display:flex;align-items:flex-start;gap:12px;margin:0 0 14px;padding:14px 16px;border:1px solid var(--line);border-radius:16px;background:#fff}
+      .device-status-dot{flex:0 0 auto;width:11px;height:11px;margin:5px 0 0;border-radius:50%;background:#a07820;box-shadow:0 0 0 4px #f7efd9}
+      .device-status-copy{display:grid;gap:3px;min-width:0}
+      .device-status-copy strong{font-size:.92rem}
+      .device-status-copy span{color:var(--muted);font-size:.82rem;line-height:1.45}
+      .device-status[data-status=online]{border-color:#d3e9df;background:#f5fbf8}
+      .device-status[data-status=online] .device-status-dot{background:#1b9b6b;box-shadow:0 0 0 4px rgba(27,155,107,.13)}
+      .device-status[data-status=offline]{border-color:#f0d7d4;background:#fff8f7}
+      .device-status[data-status=offline] .device-status-dot{background:#c64e42;box-shadow:0 0 0 4px rgba(198,78,66,.12)}
       .info-banner{display:flex;gap:12px;align-items:flex-start;margin:0 0 18px;padding:14px 16px;border:1px solid #d5e9e1;border-radius:16px;background:#edf7f3;color:#315b4c;font-size:.88rem;line-height:1.5}
       .info-icon{flex:0 0 auto;display:grid;place-items:center;width:24px;height:24px;border-radius:50%;background:#d7eee4;color:var(--green-dark);font-weight:900}
       .relay-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:18px}
@@ -129,6 +138,13 @@
       </section>
 
       <main id="controls" hidden>
+        <div id="device-status" class="device-status" data-status="unknown" role="status" aria-live="polite">
+          <span class="device-status-dot" aria-hidden="true"></span>
+          <div class="device-status-copy">
+            <strong id="device-status-title">Checking ESP32 status…</strong>
+            <span id="device-status-detail">Waiting for the latest device check-in.</span>
+          </div>
+        </div>
         <aside class="info-banner">
           <span class="info-icon" aria-hidden="true">i</span>
           <span>Schedules repeat daily in Asia/Kolkata time. If the ESP32 misses polling for more than 15 seconds across a scheduled start, that day's run is skipped.</span>
@@ -254,6 +270,7 @@
       const controls = document.querySelector("#controls");
       const logoutButton = document.querySelector("#logout");
       const message = document.querySelector("#message");
+      const deviceStatus = document.querySelector("#device-status");
       const tokenKey = "relayControlSession";
       let refreshTimer;
 
@@ -288,8 +305,44 @@
         document.querySelector(`[data-schedule="${relay}"]`).hidden = mode !== "auto";
       }
 
+      function formatAge(seconds) {
+        if (seconds < 5) return "just now";
+        if (seconds < 60) return `${seconds} seconds ago`;
+        const minutes = Math.floor(seconds / 60);
+        if (minutes < 60) return `${minutes} minute${minutes === 1 ? "" : "s"} ago`;
+        const hours = Math.floor(minutes / 60);
+        if (hours < 24) return `${hours} hour${hours === 1 ? "" : "s"} ago`;
+        const days = Math.floor(hours / 24);
+        return `${days} day${days === 1 ? "" : "s"} ago`;
+      }
+
+      function renderDeviceStatus(status) {
+        const title = document.querySelector("#device-status-title");
+        const detail = document.querySelector("#device-status-detail");
+        if (!status || typeof status.online !== "boolean") {
+          deviceStatus.dataset.status = "unknown";
+          title.textContent = "ESP32 status unavailable";
+          detail.textContent = "The control service did not return device connection details.";
+        } else if (status.online) {
+          deviceStatus.dataset.status = "online";
+          title.textContent = "ESP32 online";
+          detail.textContent = `Last check-in ${formatAge(status.lastSeenSecondsAgo ?? 0)}.`;
+        } else if (status.lastSeenAt) {
+          deviceStatus.dataset.status = "offline";
+          title.textContent = "ESP32 offline";
+          detail.textContent =
+            `Last check-in ${formatAge(status.lastSeenSecondsAgo ?? 0)}. Check the device's Wi-Fi and internet connection.`;
+        } else {
+          deviceStatus.dataset.status = "offline";
+          title.textContent = "ESP32 has not checked in";
+          detail.textContent =
+            "Check that the device is powered on and connected to Wi-Fi with internet access.";
+        }
+      }
+
       async function refreshStates(syncSettings) {
         const state = await api("/api/state");
+        renderDeviceStatus(state.device);
         for (const relay of [1, 2]) {
           const item = state.relays[`relay${relay}`];
           const stateElement = document.querySelector(`#relay${relay}-state`);
@@ -323,6 +376,10 @@
           showSignedIn(false);
           message.textContent = "Session expired. Sign in again.";
         } else {
+          deviceStatus.dataset.status = "unknown";
+          document.querySelector("#device-status-title").textContent = "Connection status unavailable";
+          document.querySelector("#device-status-detail").textContent =
+            "This browser cannot reach the control service right now.";
           message.textContent = `Unable to refresh relay states: ${error.message}`;
         }
       }

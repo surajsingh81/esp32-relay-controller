@@ -70,6 +70,12 @@ shows the requested output state, not electrical feedback from the relay.
 No port forwarding is required. **Do not forward HTTP or any port to the
 ESP32.**
 
+After sign-in, the page also reports the ESP32's most recent successful
+check-in. It shows **Online** when the device has polled the Worker within
+15 seconds, and **Offline** after that window expires. Offline means the
+service has not heard from the device; it cannot tell whether the cause is
+Wi-Fi, the home internet connection, or the device being powered off.
+
 ## 5. Deploying schedule changes
 
 The schedule feature adds D1 tables without clearing existing relay states.
