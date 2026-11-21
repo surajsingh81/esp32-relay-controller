@@ -3,7 +3,7 @@ main = "src/index.js"
 compatibility_date = "2026-11-21"
 
 [vars]
-WEB_ORIGIN = "https://YOUR_GITHUB_USERNAME.github.io"
+WEB_ORIGIN = "https://surajsingh81.github.io"
 
 [[d1_databases]]
 binding = "DB"
