@@ -60,6 +60,10 @@ password is not embedded in the page.
 6. Connect the ESP32-C3 by USB. Choose **PlatformIO: Build**, then
    **PlatformIO: Upload**. Open **PlatformIO: Monitor** at 115200 baud.
 
+The Serial Monitor reports Wi-Fi connection attempts and IP address, relay
+initialization, cloud polling on HTTPS/TCP port 443, desired relay states
+received from the page, and the GPIO level applied when a relay changes.
+
 The ESP32 starts both relays OFF and polls the Worker about every three
 seconds. It needs outbound DNS and HTTPS (TCP port 443) access to the Worker.
 Its TLS connection verifies certificates using the ESP32 Arduino built-in CA
