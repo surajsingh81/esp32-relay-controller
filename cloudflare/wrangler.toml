@@ -1,0 +1,16 @@
+name = "esp32-relay-api"
+main = "src/index.js"
+compatibility_date = "2026-11-21"
+
+[vars]
+WEB_ORIGIN = "https://YOUR_GITHUB_USERNAME.github.io"
+
+[[d1_databases]]
+binding = "DB"
+database_name = "esp32-relay-state"
+database_id = "REPLACE_WITH_D1_DATABASE_ID"
+
+[[ratelimits]]
+name = "LOGIN_LIMITER"
+namespace_id = "1001"
+simple = { limit = 10, period = 60 }

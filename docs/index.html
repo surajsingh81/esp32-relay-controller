@@ -1,0 +1,136 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="referrer" content="no-referrer">
+    <title>ESP32 Relay Control</title>
+    <style>
+      body{font-family:system-ui,sans-serif;max-width:38rem;margin:2rem auto;padding:0 1rem;color:#202124}
+      section{border:1px solid #ddd;border-radius:.75rem;padding:1rem;margin:1rem 0}
+      button{border:0;border-radius:.4rem;padding:.7rem 1rem;margin:.35rem;color:white;font-weight:700;cursor:pointer}
+      button:disabled{opacity:.5;cursor:not-allowed}.on{background:#218838}.off{background:#6c757d}
+      input{display:block;width:min(100%,24rem);box-sizing:border-box;padding:.7rem;margin:.6rem 0}
+      #controls[hidden],#login[hidden]{display:none}#message{min-height:1.5em}
+    </style>
+  </head>
+  <body>
+    <h1>ESP32 Relay Control</h1>
+    <p id="message" role="status">Sign in to control the relays.</p>
+    <section id="login">
+      <h2>Password required</h2>
+      <form id="login-form">
+        <label for="password">Control password</label>
+        <input id="password" type="password" autocomplete="current-password" required>
+        <button class="on" type="submit">Sign in</button>
+      </form>
+    </section>
+    <main id="controls" hidden>
+      <button id="logout" type="button" class="off">Sign out</button>
+      <section>
+        <h2>Relay 1</h2>
+        <p>Current requested state: <strong id="relay1-state">Unknown</strong></p>
+        <button class="on" data-relay="1" data-on="true">ON</button>
+        <button class="off" data-relay="1" data-on="false">OFF</button>
+      </section>
+      <section>
+        <h2>Relay 2</h2>
+        <p>Current requested state: <strong id="relay2-state">Unknown</strong></p>
+        <button class="on" data-relay="2" data-on="true">ON</button>
+        <button class="off" data-relay="2" data-on="false">OFF</button>
+      </section>
+    </main>
+    <script>
+      const API_BASE = "https://YOUR-WORKER.YOUR-SUBDOMAIN.workers.dev";
+      const loginForm = document.querySelector("#login-form");
+      const loginPanel = document.querySelector("#login");
+      const controls = document.querySelector("#controls");
+      const message = document.querySelector("#message");
+      const tokenKey = "relayControlSession";
+
+      async function api(path, options = {}) {
+        const headers = new Headers(options.headers);
+        if (options.auth !== false) {
+          headers.set("Authorization", `Bearer ${sessionStorage.getItem(tokenKey)}`);
+        }
+        if (options.body) headers.set("Content-Type", "application/json");
+        const response = await fetch(`${API_BASE}${path}`, {
+          ...options,
+          headers,
+          credentials: "omit",
+        });
+        const result = await response.json();
+        if (!response.ok) throw new Error(result.error || `Request failed (${response.status})`);
+        return result;
+      }
+
+      function showSignedIn(signedIn) {
+        loginPanel.hidden = signedIn;
+        controls.hidden = !signedIn;
+      }
+
+      async function refreshStates() {
+        const state = await api("/api/state");
+        document.querySelector("#relay1-state").textContent = state.relay1 ? "ON" : "OFF";
+        document.querySelector("#relay2-state").textContent = state.relay2 ? "ON" : "OFF";
+      }
+
+      loginForm.addEventListener("submit", async (event) => {
+        event.preventDefault();
+        message.textContent = "Signing in…";
+        try {
+          const result = await api("/api/login", {
+            method: "POST",
+            auth: false,
+            body: JSON.stringify({ password: document.querySelector("#password").value }),
+          });
+          sessionStorage.setItem(tokenKey, result.token);
+          document.querySelector("#password").value = "";
+          showSignedIn(true);
+          await refreshStates();
+          message.textContent = "Signed in. Commands reach the ESP32 when it polls the service.";
+        } catch (error) {
+          message.textContent = error.message;
+        }
+      });
+
+      document.querySelectorAll("[data-relay]").forEach((button) => {
+        button.addEventListener("click", async () => {
+          message.textContent = "Sending command…";
+          try {
+            const state = await api(`/api/relay/${button.dataset.relay}`, {
+              method: "POST",
+              body: JSON.stringify({ on: button.dataset.on === "true" }),
+            });
+            document.querySelector("#relay1-state").textContent = state.relay1 ? "ON" : "OFF";
+            document.querySelector("#relay2-state").textContent = state.relay2 ? "ON" : "OFF";
+            message.textContent = "Desired state saved. The ESP32 checks for updates every few seconds.";
+          } catch (error) {
+            message.textContent = error.message;
+            if (error.message === "Authentication required") {
+              sessionStorage.removeItem(tokenKey);
+              showSignedIn(false);
+            }
+          }
+        });
+      });
+
+      document.querySelector("#logout").addEventListener("click", () => {
+        sessionStorage.removeItem(tokenKey);
+        showSignedIn(false);
+        message.textContent = "Signed out.";
+      });
+
+      if (sessionStorage.getItem(tokenKey)) {
+        showSignedIn(true);
+        refreshStates().then(() => {
+          message.textContent = "Signed in.";
+        }).catch(() => {
+          sessionStorage.removeItem(tokenKey);
+          showSignedIn(false);
+          message.textContent = "Session expired. Sign in again.";
+        });
+      }
+    </script>
+  </body>
+</html>
